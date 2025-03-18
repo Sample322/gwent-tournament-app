@@ -1,0 +1,408 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Roboto', sans-serif;
+  }
+  
+  body {
+    background-color: #1a1a1a;
+    color: #e0e0e0;
+  }
+  
+  .gwent-app {
+    max-width: 100%;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-color: #1a1a1a;
+    background-image: url('images/gwent-background.jpeg');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+  }
+  
+  .gwent-header {
+    background-color: rgba(0, 0, 0, 0.8);
+    padding: 15px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+  }
+  
+  .gwent-header h1 {
+    color: #f4d03f;
+    text-align: center;
+    font-size: 1.5rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  
+  .lobby-code-display {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-weight: bold;
+    color: #f4d03f;
+  }
+  
+  .gwent-back-btn {
+    position: absolute;
+    left: 10px;
+    background: none;
+    border: none;
+    color: #f4d03f;
+    font-size: 1.2rem;
+    cursor: pointer;
+  }
+  
+  .gwent-logo {
+    width: 50px;
+    height: 50px;
+    background-image: url('images/gwent-logo.png');
+    background-size: contain;
+    background-repeat: no-repeat;
+    margin-left: 15px;
+  }
+  
+  .gwent-content {
+    flex: 1;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: rgba(0, 0, 0, 0.7);
+  }
+  
+  .player-form {
+    width: 100%;
+    max-width: 400px;
+    margin-bottom: 30px;
+  }
+  
+  .player-form label {
+    display: block;
+    margin-bottom: 10px;
+    color: #f4d03f;
+  }
+  
+  .player-form input {
+    width: 100%;
+    padding: 12px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid #f4d03f;
+    color: white;
+    border-radius: 4px;
+    font-size: 1rem;
+  }
+  
+  .gwent-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+    max-width: 400px;
+  }
+  
+  .gwent-btn {
+    padding: 15px;
+    background-color: #f4d03f;
+    color: #333;
+    border: none;
+    border-radius: 4px;
+    font-weight: bold;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background-color 0.3s;
+  }
+  
+  .gwent-btn:hover {
+    background-color: #f1c40f;
+  }
+  
+  .gwent-btn:disabled {
+    background-color: #7f7046;
+    cursor: not-allowed;
+  }
+  
+  .gwent-btn.secondary {
+    background-color: transparent;
+    border: 1px solid #f4d03f;
+    color: #f4d03f;
+  }
+  
+  .gwent-btn.secondary:hover {
+    background-color: rgba(244, 208, 63, 0.1);
+  }
+  
+  .lobby-info {
+    text-align: center;
+    margin-bottom: 30px;
+  }
+  
+  .lobby-code {
+    font-size: 2rem;
+    color: #f4d03f;
+    background-color: rgba(0, 0, 0, 0.5);
+    padding: 10px 20px;
+    border-radius: 5px;
+    margin: 15px 0;
+    letter-spacing: 2px;
+  }
+  
+  .tournament-stage-selector {
+    width: 100%;
+    max-width: 400px;
+    margin-bottom: 30px;
+  }
+  
+  .tournament-stage-selector h3 {
+    margin-bottom: 10px;
+    color: #f4d03f;
+  }
+  
+  .tournament-stage-selector select {
+    width: 100%;
+    padding: 12px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid #f4d03f;
+    color: white;
+    border-radius: 4px;
+    font-size: 1rem;
+  }
+  
+  .lobby-join-form {
+    width: 100%;
+    max-width: 400px;
+    margin-bottom: 30px;
+  }
+  
+  .lobby-join-form label {
+    display: block;
+    margin-bottom: 10px;
+    color: #f4d03f;
+  }
+  
+  .lobby-join-form input {
+    width: 100%;
+    padding: 12px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid #f4d03f;
+    color: white;
+    border-radius: 4px;
+    font-size: 1rem;
+    text-transform: uppercase;
+  }
+  
+  .waiting-screen {
+    text-align: center;
+  }
+  
+  .loading-spinner {
+    width: 50px;
+    height: 50px;
+    border: 5px solid rgba(244, 208, 63, 0.3);
+    border-radius: 50%;
+    border-top-color: #f4d03f;
+    margin: 0 auto 20px;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  
+  .lobby-players {
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    width: 100%;
+    margin-bottom: 30px;
+  }
+  
+  .player-card {
+    text-align: center;
+  }
+  
+  .player-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    margin-bottom: 10px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 2px solid #f4d03f;
+  }
+  
+  .player-avatar.you {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23f4d03f"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>');
+    background-size: 60%;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+  
+  .player-avatar.opponent {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23f4d03f"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>');
+    background-size: 60%;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+  
+  .versus-indicator {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #f4d03f;
+  }
+  
+  .tournament-info {
+    text-align: center;
+    margin-bottom: 30px;
+  }
+  
+  .waiting-message {
+    color: #aaa;
+    text-align: center;
+    margin: 20px 0;
+  }
+  
+  .spectator-option {
+    margin-top: 20px;
+  }
+  
+  .selection-instruction {
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  
+  .factions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 15px;
+    width: 100%;
+    margin-bottom: 30px;
+  }
+  
+  .faction-card {
+    background-color: rgba(0, 0, 0, 0.5);
+    border: 1px solid #555;
+    border-radius: 5px;
+    overflow: hidden;
+    transition: transform 0.2s, border-color 0.2s;
+    cursor: pointer;
+  }
+  
+  .faction-card:hover {
+    transform: translateY(-5px);
+    border-color: #f4d03f;
+  }
+  
+  .faction-card.selected {
+    border: 2px solid #f4d03f;
+    box-shadow: 0 0 10px rgba(244, 208, 63, 0.5);
+  }
+  
+  .faction-image {
+    height: 120px;
+    background-size: cover;
+    background-position: center;
+  }
+  
+  .faction-name {
+    padding: 10px;
+    text-align: center;
+    background-color: rgba(0, 0, 0, 0.7);
+  }
+  
+  .ban-timer {
+    position: absolute;
+    right: 15px;
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #fff;
+  }
+  
+  .ban-timer.warning {
+    color: #e74c3c;
+    animation: pulse 1s infinite;
+  }
+  
+  @keyframes pulse {
+    0% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+  
+  .ban-instruction {
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  
+  .opponent-factions h4 {
+    text-align: center;
+    margin-bottom: 15px;
+    color: #f4d03f;
+  }
+  
+  .ban-grid .faction-card.selected::before {
+    content: '❌';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 2rem;
+    color: #e74c3c;
+  }
+  
+  .results-grid .faction-card {
+    cursor: default;
+  }
+  
+  .results-grid .faction-card:hover {
+    transform: none;
+  }
+  
+  .player-results, .opponent-results {
+    margin-bottom: 30px;
+    width: 100%;
+  }
+  
+  .player-results h3, .opponent-results h3 {
+    text-align: center;
+    margin-bottom: 15px;
+    color: #f4d03f;
+  }
+  
+  .match-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 100%;
+    max-width: 400px;
+  }
+  
+  .music-toggle {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: rgba(0, 0, 0, 0.7);
+    border: 1px solid #f4d03f;
+    color: #f4d03f;
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 1000;
+  }
