@@ -12,8 +12,7 @@ const LobbySchema = new mongoose.Schema({
   },
   opponent: {
     id: String,
-    name: String,
-    default: null
+    name: String
   },
   spectators: [{
     id: String,
