@@ -17,35 +17,37 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSocketListeners();
 
   // Состояние приложения
-  const appState = {
-    currentPage: 'home',
-    lobbyCode: null,
-    isCreator: false,
-    playerId: WebApp.initDataUnsafe.user ? WebApp.initDataUnsafe.user.id.toString() : Math.random().toString(36).substring(2, 9),
-    playerName: WebApp.initDataUnsafe.user ? WebApp.initDataUnsafe.user.first_name : '',
-    opponent: null,
-    tournamentStage: 'quarter-finals',
-    selectedFactions: [],
-    bannedFaction: null,
-    remainingFactions: [],
-    opponentSelectedFactions: [],
-    opponentRemainingFactions: [],
-    currentRound: 1,
-    maxRounds: 3,
-    timerInterval: null,
-    timerRemaining: 180, // 3 минуты в секундах
-    status: 'waiting',
-    opponentSelectionStatus: { status: null, phase: null }
-  };
+  // Обновление состояния приложения - добавляем формат
+const appState = {
+  currentPage: 'home',
+  lobbyCode: null,
+  isCreator: false,
+  playerId: WebApp.initDataUnsafe.user ? WebApp.initDataUnsafe.user.id.toString() : Math.random().toString(36).substring(2, 9),
+  playerName: WebApp.initDataUnsafe.user ? WebApp.initDataUnsafe.user.first_name : '',
+  opponent: null,
+  tournamentFormat: 'bo3', // Новое поле: 'bo3' или 'bo5'
+  selectedFactions: [],
+  bannedFaction: null,
+  remainingFactions: [],
+  opponentSelectedFactions: [],
+  opponentRemainingFactions: [],
+  currentRound: 1,
+  maxRounds: 3, // Будет обновляться в зависимости от формата
+  timerInterval: null,
+  timerRemaining: 180, // 3 минуты в секундах
+  status: 'waiting',
+  opponentSelectionStatus: { status: null, phase: null }
+};
 
-  // Фракции Гвинта с картинками
-  const gwentFactions = [
-    { id: 'northern-realms', name: 'Северные Королевства', image: 'images/northern-realms.png' },
-    { id: 'nilfgaard', name: 'Нильфгаард', image: 'images/nilfgaard.png' },
-    { id: 'monsters', name: 'Чудовища', image: 'images/monsters.png' },
-    { id: 'scoia-tael', name: 'Скоя\'таэли', image: 'images/scoia-tael.png' },
-    { id: 'skellige', name: 'Скеллиге', image: 'images/skellige.png' }
-  ];
+// Обновление фракций - добавляем Синдикат
+const gwentFactions = [
+  { id: 'northern-realms', name: 'Северные Королевства', image: 'images/northern-realms.png' },
+  { id: 'nilfgaard', name: 'Нильфгаард', image: 'images/nilfgaard.png' },
+  { id: 'monsters', name: 'Чудовища', image: 'images/monsters.png' },
+  { id: 'scoia-tael', name: 'Скоя\'таэли', image: 'images/scoia-tael.png' },
+  { id: 'skellige', name: 'Скеллиге', image: 'images/skellige.png' },
+  { id: 'syndicate', name: 'Синдикат', image: 'images/syndicate.png' }
+];
 
   // Функция настройки обработчиков Socket.IO
   function setupSocketListeners() {
