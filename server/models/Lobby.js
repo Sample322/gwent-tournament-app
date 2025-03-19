@@ -12,7 +12,8 @@ const LobbySchema = new mongoose.Schema({
   },
   opponent: {
     id: String,
-    name: String
+    name: String,
+    default: null
   },
   spectators: [{
     id: String,
@@ -23,12 +24,30 @@ const LobbySchema = new mongoose.Schema({
     enum: ['quarter-finals', 'semi-finals', 'finals'],
     default: 'quarter-finals'
   },
-  creatorSelectedFactions: [String],
-  opponentSelectedFactions: [String],
-  creatorBannedFaction: String,
-  opponentBannedFaction: String,
-  creatorRemainingFactions: [String],
-  opponentRemainingFactions: [String],
+  creatorSelectedFactions: {
+    type: [String],
+    default: []
+  },
+  opponentSelectedFactions: {
+    type: [String],
+    default: []
+  },
+  creatorBannedFaction: {
+    type: String,
+    default: null
+  },
+  opponentBannedFaction: {
+    type: String,
+    default: null
+  },
+  creatorRemainingFactions: {
+    type: [String],
+    default: []
+  },
+  opponentRemainingFactions: {
+    type: [String],
+    default: []
+  },
   status: {
     type: String,
     enum: ['waiting', 'selecting-factions', 'banning', 'match-results'],
