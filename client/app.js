@@ -34,7 +34,8 @@ document.addEventListener('DOMContentLoaded', () => {
     maxRounds: 3,
     timerInterval: null,
     timerRemaining: 180, // 3 минуты в секундах
-    status: 'waiting'
+    status: 'waiting',
+    opponentSelectionStatus: { status: null, phase: null }
   };
 
   // Фракции Гвинта с картинками
@@ -111,6 +112,10 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
               renderApp();
             }
+            // Если оба игрока выбрали фракции, скрываем индикатор ожидания
+            if (lobby.creatorSelectedFactions.length === 3 && lobby.opponentSelectedFactions.length === 3) {
+              hideWaitingMessage();
+            }
             break;
           case 'match-results':
             if (appState.currentPage !== 'match-results') {
@@ -125,6 +130,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       } else {
         renderApp();
+      }
+      
+      // Проверяем, нужно ли скрыть индикатор ожидания
+      if (appState.currentPage === 'selecting-factions' && 
+          appState.opponentSelectedFactions && 
+          appState.opponentSelectedFactions.length === 3) {
+        hideWaitingMessage();
+      }
+      
+      if (appState.currentPage === 'ban-phase' && 
+          appState.selectedFactions.length === 3 && 
+          appState.opponentSelectedFactions.length === 3) {
+        hideWaitingMessage();
       }
     });
     
@@ -174,6 +192,20 @@ document.addEventListener('DOMContentLoaded', () => {
       if (appState.timerInterval) {
         clearInterval(appState.timerInterval);
         appState.timerInterval = null;
+      }
+    });
+    
+    // Статус выбора игрока
+    socket.on('player-selection-status', ({ playerId, status, phase }) => {
+      if (playerId !== appState.playerId) {
+        appState.opponentSelectionStatus = { status, phase };
+        
+        // Если оппонент завершил свой выбор и мы завершили свой, скрыть сообщение ожидания
+        if (status === 'completed' && phase === appState.currentPage) {
+          hideWaitingMessage();
+        }
+        
+        renderApp();
       }
     });
     
@@ -293,20 +325,73 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Отправка выбранных фракций
   function confirmFactionSelection() {
-    socket.emit('confirm-faction-selection', {
-      lobbyCode: appState.lobbyCode,
-      playerId: appState.playerId,
-      selectedFactions: appState.selectedFactions
-    });
+    // Показываем диалог подтверждения
+    showConfirmDialog(
+      'Подтвердить выбор фракций?', 
+      'Вы выбрали: ' + getFactionsByIds(appState.selectedFactions).map(f => f.name).join(', '),
+      () => {
+        // Отправляем выбор на сервер
+        socket.emit('confirm-faction-selection', {
+          lobbyCode: appState.lobbyCode,
+          playerId: appState.playerId,
+          selectedFactions: appState.selectedFactions
+        });
+        
+        // Отправляем статус
+        socket.emit('player-selection-status', {
+          lobbyCode: appState.lobbyCode,
+          playerId: appState.playerId,
+          status: 'completed',
+          phase: 'selecting-factions'
+        });
+        
+        // Скрываем диалог
+        hideDialog();
+        
+        // Показываем сообщение о ожидании
+        showWaitingMessage('Ожидание выбора оппонента...');
+      },
+      () => {
+        // При отмене ничего не делаем, пользователь может изменить свой выбор
+        hideDialog();
+      }
+    );
   }
   
   // Отправка бана фракции
   function confirmFactionBan() {
-    socket.emit('confirm-faction-ban', {
-      lobbyCode: appState.lobbyCode,
-      playerId: appState.playerId,
-      bannedFaction: appState.bannedFaction
-    });
+    // Показываем диалог подтверждения
+    const bannedFaction = getFactionsByIds([appState.bannedFaction])[0];
+    showConfirmDialog(
+      'Подтвердить бан фракции?', 
+      `Вы выбрали для бана: ${bannedFaction.name}`,
+      () => {
+        // Отправляем бан на сервер
+        socket.emit('confirm-faction-ban', {
+          lobbyCode: appState.lobbyCode,
+          playerId: appState.playerId,
+          bannedFaction: appState.bannedFaction
+        });
+        
+        // Отправляем статус
+        socket.emit('player-selection-status', {
+          lobbyCode: appState.lobbyCode,
+          playerId: appState.playerId,
+          status: 'completed',
+          phase: 'ban-phase'
+        });
+        
+        // Скрываем диалог
+        hideDialog();
+        
+        // Показываем сообщение о ожидании
+        showWaitingMessage('Ожидание бана от оппонента...');
+      },
+      () => {
+        // При отмене ничего не делаем, пользователь может изменить свой выбор
+        hideDialog();
+      }
+    );
   }
   
   // Запуск фазы выбора фракций
@@ -764,6 +849,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Рендеринг страницы результатов матча
   function renderMatchResults(container) {
+    // Определяем, какую монетку получает каждый игрок
+    // Используем lobbyCode как seed для псевдорандома чтобы обеспечить одинаковый результат для обоих игроков
+    const seed = appState.lobbyCode.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const isCreatorBlueCoin = seed % 2 === 0;
+    
+    const playerCoin = appState.isCreator ? (isCreatorBlueCoin ? 'blue' : 'red') : (isCreatorBlueCoin ? 'red' : 'blue');
+    const opponentCoin = playerCoin === 'blue' ? 'red' : 'blue';
+    
+    // Находим забаненные фракции
+    const playerBannedFaction = appState.isCreator
+      ? getFactionsByIds([appState.opponentBannedFaction])[0]
+      : getFactionsByIds([appState.creatorBannedFaction])[0];
+      
+    const opponentBannedFaction = appState.isCreator
+      ? getFactionsByIds([appState.creatorBannedFaction])[0]
+      : getFactionsByIds([appState.opponentBannedFaction])[0];
+    
     container.innerHTML = `
       <div class="gwent-app">
         <div class="gwent-header">
@@ -773,7 +875,10 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="gwent-content">
           <div class="match-info">
             <div class="player-results">
-              <h3>Ваши доступные фракции:</h3>
+              <div class="player-header">
+                <h3>Ваши доступные фракции:</h3>
+                <div class="coin-indicator ${playerCoin}-coin"></div>
+              </div>
               <div class="factions-grid results-grid">
                 ${getFactionsByIds(appState.remainingFactions).map(faction => `
                   <div class="faction-card">
@@ -782,10 +887,20 @@ document.addEventListener('DOMContentLoaded', () => {
                   </div>
                 `).join('')}
               </div>
+              <div class="banned-faction">
+                <h4>Забанено оппонентом:</h4>
+                <div class="faction-card banned">
+                  <div class="faction-image" style="background-image: url('${playerBannedFaction.image}')"></div>
+                  <div class="faction-name">${playerBannedFaction.name}</div>
+                </div>
+              </div>
             </div>
             
             <div class="opponent-results">
-              <h3>Доступные фракции оппонента:</h3>
+              <div class="player-header">
+                <h3>Доступные фракции оппонента:</h3>
+                <div class="coin-indicator ${opponentCoin}-coin"></div>
+              </div>
               <div class="factions-grid results-grid">
                 ${getFactionsByIds(appState.opponentRemainingFactions).map(faction => `
                   <div class="faction-card">
@@ -793,6 +908,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="faction-name">${faction.name}</div>
                   </div>
                 `).join('')}
+              </div>
+              <div class="banned-faction">
+                <h4>Забанено вами:</h4>
+                <div class="faction-card banned">
+                  <div class="faction-image" style="background-image: url('${opponentBannedFaction.image}')"></div>
+                  <div class="faction-name">${opponentBannedFaction.name}</div>
+                </div>
               </div>
             </div>
           </div>
@@ -811,6 +933,9 @@ document.addEventListener('DOMContentLoaded', () => {
       appState.timerInterval = null;
     }
     
+    // Скрываем сообщение о ожидании, если оно отображается
+    hideWaitingMessage();
+    
     document.getElementById('new-match-btn').addEventListener('click', () => {
       resetLobby();
     });
@@ -819,6 +944,68 @@ document.addEventListener('DOMContentLoaded', () => {
       appState.currentPage = 'home';
       renderApp();
     });
+  }
+
+  // Функции для работы с диалогами
+  function showConfirmDialog(title, message, onConfirm, onCancel) {
+    // Создаем диалог, если его еще нет
+    let dialog = document.getElementById('gwent-dialog');
+    if (!dialog) {
+      dialog = document.createElement('div');
+      dialog.id = 'gwent-dialog';
+      dialog.className = 'gwent-dialog';
+      document.body.appendChild(dialog);
+    }
+    
+    dialog.innerHTML = `
+      <div class="gwent-dialog-content">
+        <h3>${title}</h3>
+        <p>${message}</p>
+        <div class="gwent-dialog-buttons">
+          <button id="dialog-confirm" class="gwent-btn">Подтвердить</button>
+          <button id="dialog-cancel" class="gwent-btn secondary">Отмена</button>
+        </div>
+      </div>
+    `;
+    
+    dialog.style.display = 'flex';
+    
+    document.getElementById('dialog-confirm').addEventListener('click', onConfirm);
+    document.getElementById('dialog-cancel').addEventListener('click', onCancel);
+  }
+
+  function hideDialog() {
+    const dialog = document.getElementById('gwent-dialog');
+    if (dialog) {
+      dialog.style.display = 'none';
+    }
+  }
+
+  // Функция для отображения сообщения о ожидании
+  function showWaitingMessage(message) {
+    let waitingMsg = document.getElementById('waiting-message');
+    if (!waitingMsg) {
+      waitingMsg = document.createElement('div');
+      waitingMsg.id = 'waiting-message';
+      waitingMsg.className = 'waiting-overlay';
+      document.body.appendChild(waitingMsg);
+    }
+    
+    waitingMsg.innerHTML = `
+      <div class="waiting-content">
+        <div class="loading-spinner"></div>
+        <p>${message}</p>
+      </div>
+    `;
+    
+    waitingMsg.style.display = 'flex';
+  }
+
+  function hideWaitingMessage() {
+    const waitingMsg = document.getElementById('waiting-message');
+    if (waitingMsg) {
+      waitingMsg.style.display = 'none';
+    }
   }
 
   // Начальный рендеринг приложения

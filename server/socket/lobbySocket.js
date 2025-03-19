@@ -42,6 +42,12 @@ module.exports = (io) => {
       }
     });
     
+    // Обработка статуса выбора игрока
+    socket.on('player-selection-status', ({ lobbyCode, playerId, status, phase }) => {
+      // Передаем статус всем в лобби
+      socket.to(lobbyCode).emit('player-selection-status', { playerId, status, phase });
+    });
+    
     // Подтверждение выбора фракций
     socket.on('confirm-faction-selection', async ({ lobbyCode, playerId, selectedFactions }) => {
       try {
