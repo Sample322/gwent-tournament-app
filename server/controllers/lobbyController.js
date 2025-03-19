@@ -79,6 +79,7 @@ exports.getLobby = async (req, res) => {
 };
 
 // Присоединение к лобби
+// Присоединение к лобби
 exports.joinLobby = async (req, res) => {
   try {
     const { lobbyCode } = req.params;
@@ -109,8 +110,13 @@ exports.joinLobby = async (req, res) => {
         return res.status(200).json(lobby); // Уже в лобби как создатель
       }
       
-      // Проверяем, не занята ли уже позиция оппонента
-      if (lobby.opponent && lobby.opponent.id !== playerId) {
+      // Проверяем, не является ли уже оппонентом
+      if (lobby.opponent && lobby.opponent.id === playerId) {
+        return res.status(200).json(lobby); // Уже в лобби как оппонент
+      }
+      
+      // Проверяем, занята ли позиция оппонента
+      if (lobby.opponent) {
         return res.status(400).json({ message: 'Лобби уже заполнено, вы можете присоединиться как зритель' });
       }
       
