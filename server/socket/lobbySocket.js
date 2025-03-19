@@ -1,25 +1,32 @@
 const Lobby = require('../models/Lobby');
+const Match = require('../models/Match');
 
 module.exports = (io) => {
-  // Отслеживание таймеров банов по комнатам
+  // Отслеживаем комнаты для таймеров банов
   const banTimers = {};
   
   io.on('connection', (socket) => {
     console.log('Новое подключение:', socket.id);
     
-    // Присоединение к комнате (лобби)
-    socket.on('join-lobby', async ({ lobbyCode, playerId }) => {
+    // Присоединение к комнате лобби
+    socket.on('join-lobby', async ({ lobbyCode, playerId, playerName }) => {
       socket.join(lobbyCode);
-      console.log(`Игрок ${playerId} присоединился к лобби ${lobbyCode}`);
+      console.log(`Игрок ${playerId} (${playerName}) присоединился к лобби ${lobbyCode}`);
       
-      // Отправка текущего состояния лобби
+      // Обновление лобби в базе данных
       const lobby = await Lobby.findOne({ lobbyCode });
       if (lobby) {
+        // Оповещение всех в лобби о новом игроке
+        io.to(lobbyCode).emit('player-joined', { 
+          playerId, 
+          playerName, 
+          isCreator: lobby.creator.id === playerId 
+        });
         io.to(lobbyCode).emit('lobby-update', lobby);
       }
     });
     
-    // Начало фазы выбора фракций
+    // Запуск фазы выбора фракций
     socket.on('start-faction-selection', async ({ lobbyCode }) => {
       try {
         const lobby = await Lobby.findOne({ lobbyCode });
@@ -28,6 +35,7 @@ module.exports = (io) => {
         lobby.status = 'selecting-factions';
         await lobby.save();
         
+        io.to(lobbyCode).emit('faction-selection-started', { lobbyCode });
         io.to(lobbyCode).emit('lobby-update', lobby);
       } catch (error) {
         console.error('Ошибка запуска выбора фракций:', error);
@@ -48,6 +56,12 @@ module.exports = (io) => {
         } else {
           lobby.opponentSelectedFactions = selectedFactions;
         }
+        
+        // Отправляем информацию о выборе всем в лобби
+        socket.to(lobbyCode).emit('opponent-factions-selected', { 
+          playerId, 
+          selectedFactions 
+        });
         
         // Если обе стороны выбрали фракции, переходим к фазе банов
         if (lobby.creatorSelectedFactions.length === 3 && lobby.opponentSelectedFactions.length === 3) {
@@ -109,6 +123,12 @@ module.exports = (io) => {
           lobby.opponentBannedFaction = bannedFaction;
         }
         
+        // Отправляем информацию о бане всем в лобби
+        socket.to(lobbyCode).emit('opponent-faction-banned', { 
+          playerId, 
+          bannedFaction 
+        });
+        
         // Если обе стороны выбрали баны, заканчиваем фазу банов
         if (lobby.creatorBannedFaction && lobby.opponentBannedFaction) {
           // Отменяем таймер бана
@@ -131,6 +151,10 @@ module.exports = (io) => {
         
         await lobby.save();
         io.to(lobbyCode).emit('lobby-update', lobby);
+        
+        if (lobby.status === 'match-results') {
+          io.to(lobbyCode).emit('ban-phase-ended', { timeExpired: false });
+        }
       } catch (error) {
         console.error('Ошибка подтверждения бана фракции:', error);
       }
@@ -144,7 +168,20 @@ module.exports = (io) => {
         
         // Сохраняем завершенный матч в истории
         if (lobby.status === 'match-results') {
-          // Здесь можно добавить код для сохранения истории матча
+          const match = new Match({
+            lobbyCode: lobby.lobbyCode,
+            creator: lobby.creator,
+            opponent: lobby.opponent,
+            tournamentStage: lobby.tournamentStage,
+            creatorFactions: lobby.creatorSelectedFactions,
+            opponentFactions: lobby.opponentSelectedFactions,
+            creatorBannedFaction: lobby.creatorBannedFaction,
+            opponentBannedFaction: lobby.opponentBannedFaction,
+            rounds: [],
+            completedAt: new Date()
+          });
+          
+          await match.save();
         }
         
         // Сбрасываем данные лобби для новой игры
@@ -165,7 +202,7 @@ module.exports = (io) => {
     
     // Отключение от сервера
     socket.on('disconnect', () => {
-      console.log('Пользователь отключился:', socket.id);
+      console.log('Отключение:', socket.id);
     });
   });
 };

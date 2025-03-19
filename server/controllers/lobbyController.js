@@ -1,5 +1,4 @@
 const Lobby = require('../models/Lobby');
-const Match = require('../models/Match');
 
 // Генерация уникального кода лобби
 const generateLobbyCode = () => {
@@ -90,8 +89,11 @@ exports.joinLobby = async (req, res) => {
       return res.status(404).json({ message: 'Лобби не найдено' });
     }
     
-    // Если лобби уже не в статусе ожидания
-    if (lobby.status !== 'waiting') {
+    // Если лобби уже не в статусе ожидания и пользователь не является участником
+    if (lobby.status !== 'waiting' && 
+        lobby.creator.id !== playerId && 
+        (!lobby.opponent || lobby.opponent.id !== playerId) &&
+        !isSpectator) {
       return res.status(400).json({ message: 'Нельзя присоединиться к лобби, игра уже началась' });
     }
     

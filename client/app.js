@@ -248,13 +248,6 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // В реальном приложении здесь был бы сетевой код ожидания подключения
       // Для демонстрации через 3 секунды мы симулируем подключение оппонента
-      setTimeout(() => {
-        appState.opponent = {
-          id: 'opponent-id',
-          name: 'Геральт из Ривии'
-        };
-        renderApp();
-      }, 3000);
       
       return;
     }

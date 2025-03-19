@@ -406,3 +406,53 @@
     cursor: pointer;
     z-index: 1000;
   }
+  /* Стили для корректного отображения крестика при бане фракций */
+.ban-grid .faction-card {
+  position: relative;
+}
+
+.ban-grid .faction-card.selected::before {
+  content: '❌';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 2rem;
+  color: #e74c3c;
+  pointer-events: none; /* Важно! Предотвращает "перехват" событий */
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+/* Дополнительные стили для улучшения визуализации выбранной фракции */
+.ban-grid .faction-card.selected {
+  box-shadow: 0 0 10px #e74c3c;
+  transform: scale(1.03);
+  transition: all 0.2s ease;
+}
+
+.ban-grid .faction-card.selected .faction-name {
+  color: #e74c3c;
+  font-weight: bold;
+}
+
+/* Улучшение стилей кнопки подтверждения бана */
+#confirm-ban-btn {
+  transition: all 0.3s ease;
+}
+
+#confirm-ban-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#confirm-ban-btn:not(:disabled):hover {
+  background-color: #d35400;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
