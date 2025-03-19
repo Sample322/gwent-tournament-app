@@ -1,19 +1,28 @@
-// Импорт необходимых библиотек Telegram Mini Apps
+// Инициализация Telegram WebApp и Socket.IO
 const { WebApp } = window.Telegram;
+let socket;
 
-// Инициализация приложения
+// Получаем базовый URL API
+const API_BASE_URL = window.location.origin;
+
 document.addEventListener('DOMContentLoaded', () => {
   // Настройка Telegram Mini App
   WebApp.ready();
   WebApp.expand();
+
+  // Инициализация Socket.IO
+  socket = io(API_BASE_URL);
+  
+  // Обработчики событий Socket.IO
+  setupSocketListeners();
 
   // Состояние приложения
   const appState = {
     currentPage: 'home',
     lobbyCode: null,
     isCreator: false,
-    playerId: Math.random().toString(36).substring(2, 9),
-    playerName: '',
+    playerId: WebApp.initDataUnsafe.user ? WebApp.initDataUnsafe.user.id.toString() : Math.random().toString(36).substring(2, 9),
+    playerName: WebApp.initDataUnsafe.user ? WebApp.initDataUnsafe.user.first_name : '',
     opponent: null,
     tournamentStage: 'quarter-finals',
     selectedFactions: [],
@@ -25,6 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
     maxRounds: 3,
     timerInterval: null,
     timerRemaining: 180, // 3 минуты в секундах
+    status: 'waiting'
   };
 
   // Фракции Гвинта с картинками
@@ -36,7 +46,284 @@ document.addEventListener('DOMContentLoaded', () => {
     { id: 'skellige', name: 'Скеллиге', image: 'images/skellige.png' }
   ];
 
-  // Функция рендеринга интерфейса в зависимости от текущей страницы
+  // Функция настройки обработчиков Socket.IO
+  function setupSocketListeners() {
+    socket.on('connect', () => {
+      console.log('Подключение к серверу установлено');
+    });
+
+    socket.on('lobby-update', (lobby) => {
+      console.log('Получено обновление лобби:', lobby);
+      
+      // Обновляем данные лобби
+      appState.lobbyCode = lobby.lobbyCode;
+      appState.tournamentStage = lobby.tournamentStage;
+      
+      // Определяем роль игрока и правильно устанавливаем данные оппонента
+      if (lobby.creator && lobby.creator.id === appState.playerId) {
+        appState.isCreator = true;
+        appState.opponent = lobby.opponent;
+      } else if (lobby.opponent && lobby.opponent.id === appState.playerId) {
+        appState.isCreator = false;
+        appState.opponent = lobby.creator;
+      }
+      
+      // Обновляем данные о фракциях
+      if (appState.isCreator) {
+        appState.selectedFactions = lobby.creatorSelectedFactions || [];
+        appState.bannedFaction = lobby.creatorBannedFaction;
+        appState.remainingFactions = lobby.creatorRemainingFactions || [];
+        appState.opponentSelectedFactions = lobby.opponentSelectedFactions || [];
+        appState.opponentRemainingFactions = lobby.opponentRemainingFactions || [];
+      } else {
+        appState.selectedFactions = lobby.opponentSelectedFactions || [];
+        appState.bannedFaction = lobby.opponentBannedFaction;
+        appState.remainingFactions = lobby.opponentRemainingFactions || [];
+        appState.opponentSelectedFactions = lobby.creatorSelectedFactions || [];
+        appState.opponentRemainingFactions = lobby.creatorRemainingFactions || [];
+      }
+      
+      // Обновление страницы в зависимости от статуса лобби
+      if (lobby.status !== appState.status) {
+        appState.status = lobby.status;
+        
+        switch (lobby.status) {
+          case 'waiting':
+            if (appState.currentPage !== 'lobby') {
+              appState.currentPage = 'lobby';
+              renderApp();
+            } else {
+              renderApp();
+            }
+            break;
+          case 'selecting-factions':
+            if (appState.currentPage !== 'select-factions') {
+              appState.currentPage = 'select-factions';
+              renderApp();
+            } else {
+              renderApp();
+            }
+            break;
+          case 'banning':
+            if (appState.currentPage !== 'ban-phase') {
+              appState.currentPage = 'ban-phase';
+              renderApp();
+            } else {
+              renderApp();
+            }
+            break;
+          case 'match-results':
+            if (appState.currentPage !== 'match-results') {
+              appState.currentPage = 'match-results';
+              renderApp();
+            } else {
+              renderApp();
+            }
+            break;
+          default:
+            renderApp();
+        }
+      } else {
+        renderApp();
+      }
+    });
+    
+    // Новый игрок присоединился к лобби
+    socket.on('player-joined', (data) => {
+      console.log('Игрок присоединился:', data);
+      if (data.playerId !== appState.playerId) {
+        // Только обновляем UI, данные будут установлены через lobby-update
+        renderApp();
+      }
+    });
+    
+    // Начало фазы выбора фракций
+    socket.on('faction-selection-started', () => {
+      appState.currentPage = 'select-factions';
+      renderApp();
+    });
+    
+    // Получение выбора фракций оппонента
+    socket.on('opponent-factions-selected', (data) => {
+      if (data.playerId !== appState.playerId) {
+        appState.opponentSelectedFactions = data.selectedFactions;
+        renderApp();
+      }
+    });
+    
+    // Получение бана фракции от оппонента
+    socket.on('opponent-faction-banned', (data) => {
+      if (data.playerId !== appState.playerId) {
+        // Бан будет отображен через lobby-update
+        console.log('Оппонент забанил фракцию:', data.bannedFaction);
+      }
+    });
+    
+    // Окончание фазы банов
+    socket.on('ban-phase-ended', ({ timeExpired }) => {
+      if (timeExpired) {
+        alert('Время на бан истекло. Выбор сделан автоматически.');
+      }
+      appState.currentPage = 'match-results';
+      renderApp();
+    });
+    
+    // Истечение таймера бана
+    socket.on('ban-timer-expired', () => {
+      alert('Время на бан истекло. Выбор сделан автоматически.');
+      if (appState.timerInterval) {
+        clearInterval(appState.timerInterval);
+        appState.timerInterval = null;
+      }
+    });
+    
+    // Обработка ошибки подключения
+    socket.on('connect_error', (error) => {
+      console.error('Ошибка подключения к серверу:', error);
+      alert('Ошибка подключения к серверу. Пожалуйста, проверьте подключение к интернету.');
+    });
+  }
+
+  // Функции для работы с API
+  
+  // Создание нового лобби
+  async function createLobby() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/lobbies`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          creator: {
+            id: appState.playerId,
+            name: appState.playerName
+          },
+          tournamentStage: appState.tournamentStage
+        })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Ошибка создания лобби');
+      }
+      
+      const lobby = await response.json();
+      appState.lobbyCode = lobby.lobbyCode;
+      appState.isCreator = true;
+      
+      // Присоединяемся к лобби через Socket.IO
+      socket.emit('join-lobby', {
+        lobbyCode: appState.lobbyCode,
+        playerId: appState.playerId,
+        playerName: appState.playerName
+      });
+      
+      appState.currentPage = 'lobby';
+      renderApp();
+    } catch (error) {
+      console.error('Ошибка создания лобби:', error);
+      alert(`Ошибка: ${error.message}`);
+    }
+  }
+  
+  // Присоединение к существующему лобби
+  async function joinLobby(asSpectator = false) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/lobbies/${appState.lobbyCode}/join`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          playerId: appState.playerId,
+          playerName: appState.playerName,
+          isSpectator: asSpectator
+        })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Ошибка присоединения к лобби');
+      }
+      
+      const lobby = await response.json();
+      
+      // Правильная обработка данных лобби
+      if (lobby.creator && lobby.creator.id === appState.playerId) {
+        appState.isCreator = true;
+        appState.opponent = lobby.opponent || null;
+      } else if (lobby.opponent && lobby.opponent.id === appState.playerId) {
+        appState.isCreator = false;
+        appState.opponent = lobby.creator;
+      }
+      
+      // Присоединяемся к комнате через Socket.IO
+      socket.emit('join-lobby', {
+        lobbyCode: appState.lobbyCode,
+        playerId: appState.playerId,
+        playerName: appState.playerName
+      });
+      
+      appState.currentPage = 'lobby';
+      renderApp();
+    } catch (error) {
+      console.error('Ошибка присоединения к лобби:', error);
+      alert(`Ошибка: ${error.message}`);
+    }
+  }
+  
+  // Получение информации о лобби
+  async function getLobbyInfo(lobbyCode) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/lobbies/${lobbyCode}`);
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Лобби не найдено');
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Ошибка получения информации о лобби:', error);
+      alert(`Ошибка: ${error.message}`);
+      return null;
+    }
+  }
+
+  // Отправка выбранных фракций
+  function confirmFactionSelection() {
+    socket.emit('confirm-faction-selection', {
+      lobbyCode: appState.lobbyCode,
+      playerId: appState.playerId,
+      selectedFactions: appState.selectedFactions
+    });
+  }
+  
+  // Отправка бана фракции
+  function confirmFactionBan() {
+    socket.emit('confirm-faction-ban', {
+      lobbyCode: appState.lobbyCode,
+      playerId: appState.playerId,
+      bannedFaction: appState.bannedFaction
+    });
+  }
+  
+  // Запуск фазы выбора фракций
+  function startFactionSelection() {
+    socket.emit('start-faction-selection', {
+      lobbyCode: appState.lobbyCode
+    });
+  }
+  
+  // Сброс лобби для новой игры
+  function resetLobby() {
+    socket.emit('reset-lobby', {
+      lobbyCode: appState.lobbyCode
+    });
+  }
+
+  // Функция рендеринга интерфейса
   function renderApp() {
     const appContainer = document.getElementById('app');
     
@@ -115,15 +402,52 @@ document.addEventListener('DOMContentLoaded', () => {
       renderApp();
     });
 
-    // Запускаем фоновую музыку
-    playBackgroundMusic();
+    // Инициализация проигрывания музыки
+    initBackgroundMusic();
+  }
+
+  // Инициализация фоновой музыки
+  function initBackgroundMusic() {
+    // Создаем аудио-элемент, если его еще нет
+    if (!document.getElementById('background-music')) {
+      const music = document.createElement('audio');
+      music.id = 'background-music';
+      music.src = 'music/witcher-gwent-theme.mp3';
+      music.loop = true;
+      music.volume = 0.3;
+      document.body.appendChild(music);
+      
+      // Создаем кнопку управления музыкой
+      const musicButton = document.createElement('button');
+      musicButton.classList.add('music-toggle');
+      musicButton.innerHTML = '🔊';
+      musicButton.title = 'Включить/выключить музыку';
+      musicButton.id = 'music-toggle-btn';
+      document.body.appendChild(musicButton);
+      
+      // Добавляем обработчик нажатия
+      musicButton.addEventListener('click', toggleMusic);
+    }
+  }
+
+  // Включение/выключение музыки
+  function toggleMusic() {
+    const music = document.getElementById('background-music');
+    const musicBtn = document.getElementById('music-toggle-btn');
+    
+    if (music.paused) {
+      music.play().catch(e => {
+        console.log('Автоматическое воспроизведение отключено браузером:', e);
+      });
+      musicBtn.innerHTML = '🔊';
+    } else {
+      music.pause();
+      musicBtn.innerHTML = '🔇';
+    }
   }
 
   // Рендеринг страницы создания лобби
   function renderCreateLobby(container) {
-    // Генерируем уникальный код лобби
-    appState.lobbyCode = generateLobbyCode();
-
     container.innerHTML = `
       <div class="gwent-app">
         <div class="gwent-header">
@@ -132,12 +456,6 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         
         <div class="gwent-content">
-          <div class="lobby-info">
-            <h2>Ваш код лобби:</h2>
-            <div class="lobby-code">${appState.lobbyCode}</div>
-            <p>Поделитесь этим кодом с другим игроком, чтобы он мог присоединиться.</p>
-          </div>
-          
           <div class="tournament-stage-selector">
             <h3>Выберите стадию турнира:</h3>
             <select id="tournament-stage">
@@ -152,6 +470,7 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
     `;
 
+    // Обработчики событий
     document.getElementById('back-btn').addEventListener('click', () => {
       appState.currentPage = 'home';
       renderApp();
@@ -162,10 +481,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('start-lobby-btn').addEventListener('click', () => {
-      // В реальном приложении здесь создается лобби на сервере
-      // Для демонстрации мы просто переходим на страницу лобби
-      appState.currentPage = 'lobby';
-      renderApp();
+      createLobby();
     });
   }
 
@@ -184,132 +500,109 @@ document.addEventListener('DOMContentLoaded', () => {
             <input type="text" id="lobby-code" placeholder="Например: GWENT123">
           </div>
           
-          <button id="join-lobby-confirm-btn" class="gwent-btn">Присоединиться</button>
+          <div class="gwent-buttons">
+            <button id="join-lobby-confirm-btn" class="gwent-btn">Присоединиться как игрок</button>
+            <button id="join-lobby-spectator-btn" class="gwent-btn secondary">Присоединиться как зритель</button>
+          </div>
         </div>
       </div>
     `;
 
+    // Обработчики событий
     document.getElementById('back-btn').addEventListener('click', () => {
       appState.currentPage = 'home';
       renderApp();
     });
 
     document.getElementById('join-lobby-confirm-btn').addEventListener('click', () => {
-      const lobbyCodeInput = document.getElementById('lobby-code').value.trim().toUpperCase();
+      const lobbyCode = document.getElementById('lobby-code').value.trim().toUpperCase();
       
-      if (!lobbyCodeInput) {
+      if (!lobbyCode) {
         alert('Пожалуйста, введите код лобби');
         return;
       }
       
-      // В реальном приложении здесь проверка существования лобби на сервере
-      // Для демонстрации мы просто принимаем любой код
-      appState.lobbyCode = lobbyCodeInput;
-      appState.isCreator = false;
-      appState.currentPage = 'lobby';
+      appState.lobbyCode = lobbyCode;
+      joinLobby(false);
+    });
+
+    document.getElementById('join-lobby-spectator-btn').addEventListener('click', () => {
+      const lobbyCode = document.getElementById('lobby-code').value.trim().toUpperCase();
       
-      // Имитация данных оппонента для демонстрации
-      appState.opponent = {
-        id: 'opponent-id',
-        name: 'Геральт из Ривии'
-      };
+      if (!lobbyCode) {
+        alert('Пожалуйста, введите код лобби');
+        return;
+      }
       
-      renderApp();
+      appState.lobbyCode = lobbyCode;
+      joinLobby(true);
     });
   }
 
   // Рендеринг страницы лобби
   function renderLobby(container) {
-    // Если это создатель, но оппонент еще не подключился, показываем экран ожидания
-    const waitingForOpponent = appState.isCreator && !appState.opponent;
+    const waitingForOpponent = !appState.opponent;
     
-    if (waitingForOpponent) {
-      container.innerHTML = `
-        <div class="gwent-app">
-          <div class="gwent-header">
-            <button id="back-btn" class="gwent-back-btn">← Назад</button>
-            <h1>Ожидание противника</h1>
-          </div>
-          
-          <div class="gwent-content">
+    container.innerHTML = `
+      <div class="gwent-app">
+        <div class="gwent-header">
+          <h1>Лобби ${appState.lobbyCode}</h1>
+        </div>
+        
+        <div class="gwent-content">
+          ${waitingForOpponent ? `
             <div class="waiting-screen">
               <div class="loading-spinner"></div>
               <h2>Ожидание подключения противника...</h2>
               <p>Код вашего лобби: <strong>${appState.lobbyCode}</strong></p>
+              <p>Поделитесь этим кодом с другим игроком, чтобы он мог присоединиться.</p>
             </div>
-          </div>
-        </div>
-      `;
-      
-      document.getElementById('back-btn').addEventListener('click', () => {
-        appState.currentPage = 'home';
-        renderApp();
-      });
-      
-      // В реальном приложении здесь был бы сетевой код ожидания подключения
-      // Для демонстрации через 3 секунды мы симулируем подключение оппонента
-      
-      return;
-    }
-    
-    // Лобби с подключенным оппонентом
-    container.innerHTML = `
-      <div class="gwent-app">
-        <div class="gwent-header">
-          <h1>Лобби готово</h1>
-          <div class="lobby-code-display">Код: ${appState.lobbyCode}</div>
-        </div>
-        
-        <div class="gwent-content">
-          <div class="lobby-players">
-            <div class="player-card">
-              <div class="player-avatar you"></div>
-              <h3>${appState.playerName} (Вы)</h3>
-            </div>
-            
-            <div class="versus-indicator">VS</div>
-            
-            <div class="player-card">
-              <div class="player-avatar opponent"></div>
-              <h3>${appState.opponent.name}</h3>
-            </div>
-          </div>
-          
-          <div class="tournament-info">
-            <h3>Стадия турнира: ${getTournamentStageName(appState.tournamentStage)}</h3>
-            <p>Формат: Best of 3</p>
-          </div>
-          
-          ${appState.isCreator ? `
-            <button id="start-match-btn" class="gwent-btn">Начать матч</button>
           ` : `
-            <div class="waiting-message">Ожидание начала матча создателем лобби...</div>
-          `}
-          
-          ${appState.isCreator ? '' : `
-            <div class="spectator-option">
-              <button id="spectator-mode-btn" class="gwent-btn secondary">Режим наблюдателя</button>
+            <div class="lobby-players">
+              <div class="player-card">
+                <div class="player-avatar you"></div>
+                <h3>${appState.isCreator ? appState.playerName : appState.opponent.name} ${appState.isCreator ? '(Вы)' : ''}</h3>
+              </div>
+              
+              <div class="versus-indicator">VS</div>
+              
+              <div class="player-card">
+                <div class="player-avatar opponent"></div>
+                <h3>${appState.isCreator ? (appState.opponent ? appState.opponent.name : 'Ожидание...') : appState.playerName + ' (Вы)'}</h3>
+              </div>
             </div>
+            
+            <div class="tournament-info">
+              <h3>Стадия турнира: ${getTournamentStageName(appState.tournamentStage)}</h3>
+              <p>Формат: Best of 3</p>
+            </div>
+            
+            ${appState.isCreator ? `
+              <button id="start-match-btn" class="gwent-btn" ${!appState.opponent ? 'disabled' : ''}>Начать матч</button>
+            ` : `
+              <div class="waiting-message">Ожидание начала матча создателем лобби...</div>
+            `}
           `}
         </div>
       </div>
     `;
     
-    if (appState.isCreator) {
+    // Если создатель и противник подключен, показываем кнопку начала матча
+    if (appState.isCreator && appState.opponent) {
       document.getElementById('start-match-btn').addEventListener('click', () => {
-        appState.currentPage = 'select-factions';
-        renderApp();
+        startFactionSelection();
       });
     }
-    
-    if (!appState.isCreator) {
-      // В реальном приложении здесь был бы код ожидания начала матча
-      // Для демонстрации через 5 секунд мы переходим на экран выбора фракций
-      setTimeout(() => {
-        appState.currentPage = 'select-factions';
-        renderApp();
-      }, 5000);
-    }
+  }
+
+  // Получение названия стадии турнира
+  function getTournamentStageName(stage) {
+    const stages = {
+      'quarter-finals': 'Четвертьфинал',
+      'semi-finals': 'Полуфинал',
+      'finals': 'Финал'
+    };
+    return stages[stage] || 'Неизвестная стадия';
   }
 
   // Рендеринг страницы выбора фракций
@@ -323,25 +616,25 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="gwent-content">
           <div class="selection-instruction">
             <h3>Выберите 3 фракции</h3>
-            <p>Выбрано: <span id="selection-count">0</span>/3</p>
+            <p>Выбрано: <span id="selection-count">${appState.selectedFactions.length}</span>/3</p>
           </div>
           
           <div class="factions-grid">
             ${gwentFactions.map(faction => `
-              <div class="faction-card" data-faction-id="${faction.id}">
+              <div class="faction-card ${appState.selectedFactions.includes(faction.id) ? 'selected' : ''}" data-faction-id="${faction.id}">
                 <div class="faction-image" style="background-image: url('${faction.image}')"></div>
                 <div class="faction-name">${faction.name}</div>
               </div>
             `).join('')}
           </div>
           
-          <button id="confirm-selection-btn" class="gwent-btn" disabled>Подтвердить выбор</button>
+          <button id="confirm-selection-btn" class="gwent-btn" ${appState.selectedFactions.length === 3 ? '' : 'disabled'}>Подтвердить выбор</button>
         </div>
       </div>
     `;
     
+    // Добавляем обработчики выбора фракций
     const factionCards = document.querySelectorAll('.faction-card');
-    const selectionCountEl = document.getElementById('selection-count');
     const confirmButton = document.getElementById('confirm-selection-btn');
     
     factionCards.forEach(card => {
@@ -359,19 +652,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         // Обновляем счетчик и состояние кнопки
-        selectionCountEl.textContent = appState.selectedFactions.length;
+        document.getElementById('selection-count').textContent = appState.selectedFactions.length;
         confirmButton.disabled = appState.selectedFactions.length !== 3;
       });
     });
     
     confirmButton.addEventListener('click', () => {
-      // В реальном приложении здесь отправка выбора на сервер
-      // Для демонстрации имитируем выбор оппонента
-      appState.opponentSelectedFactions = getRandomOpponentFactions();
-      
-      // Переходим к фазе банов
-      appState.currentPage = 'ban-phase';
-      renderApp();
+      confirmFactionSelection();
     });
   }
 
@@ -393,7 +680,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <h4>Фракции оппонента:</h4>
             <div class="factions-grid ban-grid">
               ${getFactionsByIds(appState.opponentSelectedFactions).map(faction => `
-                <div class="faction-card" data-faction-id="${faction.id}">
+                <div class="faction-card ${appState.bannedFaction === faction.id ? 'selected' : ''}" data-faction-id="${faction.id}">
                   <div class="faction-image" style="background-image: url('${faction.image}')"></div>
                   <div class="faction-name">${faction.name}</div>
                 </div>
@@ -401,19 +688,22 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
           </div>
           
-          <button id="confirm-ban-btn" class="gwent-btn" disabled>Подтвердить бан</button>
+          <button id="confirm-ban-btn" class="gwent-btn" ${appState.bannedFaction ? '' : 'disabled'}>Подтвердить бан</button>
         </div>
       </div>
     `;
     
-    // Запускаем таймер 3 минуты
+    // Запускаем отображение таймера
     startBanTimer();
     
+    // Добавляем обработчики для выбора бана
     const factionCards = document.querySelectorAll('.faction-card');
     const confirmButton = document.getElementById('confirm-ban-btn');
     
     factionCards.forEach(card => {
-      card.addEventListener('click', () => {
+      card.addEventListener('click', (e) => {
+        e.stopPropagation(); // Останавливаем всплытие события
+        
         // Сначала снимаем выбор со всех карточек
         factionCards.forEach(c => c.classList.remove('selected'));
         
@@ -427,17 +717,49 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     confirmButton.addEventListener('click', () => {
-      // В реальном приложении здесь отправка бана на сервер
-      // Останавливаем таймер
-      stopBanTimer();
-      
-      // Рассчитываем оставшиеся фракции
-      calculateRemainingFactions();
-      
-      // Переходим к результатам
-      appState.currentPage = 'match-results';
-      renderApp();
+      confirmFactionBan();
     });
+  }
+
+  // Запуск таймера банов
+  function startBanTimer() {
+    appState.timerRemaining = 180; // 3 минуты
+    updateTimerDisplay();
+    
+    if (appState.timerInterval) {
+      clearInterval(appState.timerInterval);
+    }
+    
+    appState.timerInterval = setInterval(() => {
+      appState.timerRemaining--;
+      updateTimerDisplay();
+      
+      if (appState.timerRemaining <= 0) {
+        clearInterval(appState.timerInterval);
+        appState.timerInterval = null;
+      }
+    }, 1000);
+  }
+
+  // Обновление отображения таймера
+  function updateTimerDisplay() {
+    const minutes = Math.floor(appState.timerRemaining / 60);
+    const seconds = appState.timerRemaining % 60;
+    const timerDisplay = document.getElementById('ban-timer');
+    if (timerDisplay) {
+      timerDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      
+      // Добавляем визуальное предупреждение при малом количестве времени
+      if (appState.timerRemaining <= 30) {
+        timerDisplay.classList.add('warning');
+      }
+    }
+  }
+
+  // Получение информации о фракциях по их ID
+  function getFactionsByIds(ids) {
+    return ids.map(id => gwentFactions.find(faction => faction.id === id) || 
+      { id: id, name: "Неизвестная фракция", image: "images/gwent-logo.png" });
   }
 
   // Рендеринг страницы результатов матча
@@ -483,170 +805,27 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>
     `;
     
+    // Остановка таймера, если он всё еще активен
+    if (appState.timerInterval) {
+      clearInterval(appState.timerInterval);
+      appState.timerInterval = null;
+    }
+    
     document.getElementById('new-match-btn').addEventListener('click', () => {
-      resetMatchState();
-      appState.currentPage = 'select-factions';
-      renderApp();
+      resetLobby();
     });
     
     document.getElementById('return-home-btn').addEventListener('click', () => {
-      resetAppState();
       appState.currentPage = 'home';
       renderApp();
     });
   }
 
-  // Вспомогательные функции
-
-  // Генерация уникального кода лобби
-  function generateLobbyCode() {
-    const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let result = 'GW';
-    for (let i = 0; i < 4; i++) {
-      result += characters.charAt(Math.floor(Math.random() * characters.length));
-    }
-    return result;
-  }
-
-  // Получение названия стадии турнира
-  function getTournamentStageName(stage) {
-    const stages = {
-      'quarter-finals': 'Четвертьфинал',
-      'semi-finals': 'Полуфинал',
-      'finals': 'Финал'
-    };
-    return stages[stage] || 'Неизвестная стадия';
-  }
-
-  // Имитация выбора оппонента для демонстрации
-  function getRandomOpponentFactions() {
-    const allFactionIds = gwentFactions.map(faction => faction.id);
-    const shuffled = [...allFactionIds].sort(() => 0.5 - Math.random());
-    return shuffled.slice(0, 3);
-  }
-
-  // Получение информации о фракциях по их ID
-  function getFactionsByIds(ids) {
-    return ids.map(id => gwentFactions.find(faction => faction.id === id));
-  }
-
-  // Запуск таймера банов
-  function startBanTimer() {
-    appState.timerRemaining = 180; // 3 минуты
-    updateTimerDisplay();
-    
-    appState.timerInterval = setInterval(() => {
-      appState.timerRemaining--;
-      updateTimerDisplay();
-      
-      if (appState.timerRemaining <= 0) {
-        stopBanTimer();
-        // При истечении времени выбираем случайный бан
-        if (!appState.bannedFaction) {
-          const randomIndex = Math.floor(Math.random() * appState.opponentSelectedFactions.length);
-          appState.bannedFaction = appState.opponentSelectedFactions[randomIndex];
-          
-          // Рассчитываем оставшиеся фракции
-          calculateRemainingFactions();
-          
-          // Переходим к результатам
-          appState.currentPage = 'match-results';
-          renderApp();
-        }
-      }
-    }, 1000);
-  }
-
-  // Обновление отображения таймера
-  function updateTimerDisplay() {
-    const minutes = Math.floor(appState.timerRemaining / 60);
-    const seconds = appState.timerRemaining % 60;
-    const timerDisplay = document.getElementById('ban-timer');
-    if (timerDisplay) {
-      timerDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-      
-      // Добавляем визуальное предупреждение при малом количестве времени
-      if (appState.timerRemaining <= 30) {
-        timerDisplay.classList.add('warning');
-      }
-    }
-  }
-
-  // Остановка таймера банов
-  function stopBanTimer() {
-    if (appState.timerInterval) {
-      clearInterval(appState.timerInterval);
-      appState.timerInterval = null;
-    }
-  }
-
-  // Расчет оставшихся фракций после бана
-  function calculateRemainingFactions() {
-    // Собственные оставшиеся фракции (имитация бана от оппонента)
-    const opponentBannedFaction = appState.selectedFactions[Math.floor(Math.random() * appState.selectedFactions.length)];
-    appState.remainingFactions = appState.selectedFactions.filter(id => id !== opponentBannedFaction);
-    
-    // Оставшиеся фракции оппонента после нашего бана
-    appState.opponentRemainingFactions = appState.opponentSelectedFactions.filter(id => id !== appState.bannedFaction);
-  }
-
-  // Сброс состояния матча для нового раунда
-  function resetMatchState() {
-    appState.selectedFactions = [];
-    appState.bannedFaction = null;
-    appState.remainingFactions = [];
-    appState.opponentSelectedFactions = [];
-    appState.opponentRemainingFactions = [];
-    appState.currentRound++;
-  }
-
-  // Полный сброс состояния приложения
-  function resetAppState() {
-    appState.currentPage = 'home';
-    appState.lobbyCode = null;
-    appState.isCreator = false;
-    appState.opponent = null;
-    appState.tournamentStage = 'quarter-finals';
-    appState.selectedFactions = [];
-    appState.bannedFaction = null;
-    appState.remainingFactions = [];
-    appState.opponentSelectedFactions = [];
-    appState.opponentRemainingFactions = [];
-    appState.currentRound = 1;
-    stopBanTimer();
-  }
-
-  // Проигрывание фоновой музыки
-  function playBackgroundMusic() {
-    const music = new Audio('music/witcher-gwent-theme.mp3');
-    music.loop = true;
-    music.volume = 0.3;
-    
-    // Добавляем кнопку управления музыкой
-    const musicButton = document.createElement('button');
-    musicButton.classList.add('music-toggle');
-    musicButton.innerHTML = '🔊';
-    musicButton.title = 'Включить/выключить музыку';
-    document.body.appendChild(musicButton);
-    
-    let musicPlaying = false;
-    
-    musicButton.addEventListener('click', () => {
-      if (musicPlaying) {
-        music.pause();
-        musicButton.innerHTML = '🔇';
-        musicPlaying = false;
-      } else {
-        music.play().catch(e => console.log('Автоматическое воспроизведение отключено браузером', e));
-        musicButton.innerHTML = '🔊';
-        musicPlaying = true;
-      }
-    });
-    
-    // В Telegram Mini Apps автоматическое воспроизведение может быть заблокировано,
-    // поэтому начинаем воспроизведение по клику на кнопку
-  }
-
-  // Запускаем рендеринг приложения
+  // Начальный рендеринг приложения
   renderApp();
+
+  // Экспорт функций и состояния в глобальную область для отладки
+  window.appState = appState;
+  window.renderApp = renderApp;
+  window.socket = socket;
 });
