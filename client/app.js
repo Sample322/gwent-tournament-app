@@ -62,97 +62,101 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('Подключение к серверу установлено');
     });
 
-    socket.on('lobby-update', (lobby) => {
-      console.log('Получено обновление лобби:', lobby);
-      
-      // Обновляем данные лобби
-      appState.lobbyCode = lobby.lobbyCode;
-      appState.tournamentFormat = lobby.tournamentFormat || 'bo3';
-      appState.maxRounds = formatConfig[appState.tournamentFormat].maxRounds;
-      
-      // Определяем роль игрока и правильно устанавливаем данные оппонента
-      if (lobby.creator && lobby.creator.id === appState.playerId) {
-        appState.isCreator = true;
-        appState.opponent = lobby.opponent;
-      } else if (lobby.opponent && lobby.opponent.id === appState.playerId) {
-        appState.isCreator = false;
-        appState.opponent = lobby.creator;
-      }
-      
-      // Обновляем данные о фракциях
-      if (appState.isCreator) {
-        appState.selectedFactions = lobby.creatorSelectedFactions || [];
-        appState.bannedFaction = lobby.creatorBannedFaction;
-        appState.remainingFactions = lobby.creatorRemainingFactions || [];
-        appState.opponentSelectedFactions = lobby.opponentSelectedFactions || [];
-        appState.opponentRemainingFactions = lobby.opponentRemainingFactions || [];
-      } else {
-        appState.selectedFactions = lobby.opponentSelectedFactions || [];
-        appState.bannedFaction = lobby.opponentBannedFaction;
-        appState.remainingFactions = lobby.opponentRemainingFactions || [];
-        appState.opponentSelectedFactions = lobby.creatorSelectedFactions || [];
-        appState.opponentRemainingFactions = lobby.creatorRemainingFactions || [];
-      }
-      
-      // Обновление страницы в зависимости от статуса лобби
-      if (lobby.status !== appState.status) {
-        appState.status = lobby.status;
-        
-        switch (lobby.status) {
-          case 'waiting':
-            if (appState.currentPage !== 'lobby') {
-              appState.currentPage = 'lobby';
-              renderApp();
-            } else {
-              renderApp();
-            }
-            break;
-          case 'selecting-factions':
-            if (appState.currentPage !== 'select-factions') {
-              appState.currentPage = 'select-factions';
-              renderApp();
-            } else {
-              renderApp();
-            }
-            break;
-          case 'banning':
-            if (appState.currentPage !== 'ban-phase') {
-              appState.currentPage = 'ban-phase';
-              renderApp();
-            } else {
-              renderApp();
-            }
-            // Сбрасываем флаг подтверждения при переходе на новую фазу
-            appState.selectionConfirmed = false;
-            break;
-          case 'match-results':
-            if (appState.currentPage !== 'match-results') {
-              appState.currentPage = 'match-results';
-              renderApp();
-            } else {
-              renderApp();
-            }
-            break;
-          default:
-            renderApp();
+    // Исправление в функции установки слушателей сокетов
+socket.on('lobby-update', (lobby) => {
+  console.log('Получено обновление лобби:', lobby);
+  
+  // Обновляем данные лобби
+  appState.lobbyCode = lobby.lobbyCode;
+  appState.tournamentFormat = lobby.tournamentFormat || 'bo3';
+  appState.maxRounds = formatConfig[appState.tournamentFormat].maxRounds;
+  
+  // Определяем роль игрока и правильно устанавливаем данные оппонента
+  if (lobby.creator && lobby.creator.id === appState.playerId) {
+    appState.isCreator = true;
+    appState.opponent = lobby.opponent;
+  } else if (lobby.opponent && lobby.opponent.id === appState.playerId) {
+    appState.isCreator = false;
+    appState.opponent = lobby.creator;
+  }
+  
+  // Обновляем данные о фракциях
+  if (appState.isCreator) {
+    appState.selectedFactions = lobby.creatorSelectedFactions || [];
+    appState.bannedFaction = lobby.creatorBannedFaction;
+    appState.remainingFactions = lobby.creatorRemainingFactions || [];
+    appState.opponentSelectedFactions = lobby.opponentSelectedFactions || [];
+    appState.opponentRemainingFactions = lobby.opponentRemainingFactions || [];
+  } else {
+    appState.selectedFactions = lobby.opponentSelectedFactions || [];
+    appState.bannedFaction = lobby.opponentBannedFaction;
+    appState.remainingFactions = lobby.opponentRemainingFactions || [];
+    appState.opponentSelectedFactions = lobby.creatorSelectedFactions || [];
+    appState.opponentRemainingFactions = lobby.creatorRemainingFactions || [];
+  }
+  
+  // Обновление страницы в зависимости от статуса лобби
+  if (lobby.status !== appState.status) {
+    appState.status = lobby.status;
+    
+    switch (lobby.status) {
+      case 'waiting':
+        if (appState.currentPage !== 'lobby') {
+          appState.currentPage = 'lobby';
+          renderApp();
+        } else {
+          renderApp();
         }
-      } else {
+        break;
+      case 'selecting-factions':
+        if (appState.currentPage !== 'select-factions') {
+          appState.currentPage = 'select-factions';
+          // Сбрасываем флаг подтверждения при начале новой фазы
+          appState.selectionConfirmed = false;
+          renderApp();
+        } else {
+          renderApp();
+        }
+        break;
+        case 'banning':  // Вот этот case нужно изменить
+        if (appState.currentPage !== 'ban-phase') {
+          appState.currentPage = 'ban-phase';
+          // Сбрасываем флаги и состояние бана
+          appState.selectionConfirmed = false;
+          appState.bannedFaction = null; // Сбрасываем выбранную фракцию для бана
+          renderApp();
+        } else {
+          renderApp();
+        }
+        break;
+      case 'match-results':
+        if (appState.currentPage !== 'match-results') {
+          appState.currentPage = 'match-results';
+          renderApp();
+        } else {
+          renderApp();
+        }
+        break;
+      default:
         renderApp();
-      }
-      
-      // Проверяем, нужно ли скрыть индикатор ожидания
-      if (appState.currentPage === 'selecting-factions' && 
-          appState.opponentSelectedFactions && 
-          appState.opponentSelectedFactions.length === formatConfig[appState.tournamentFormat].selectCount) {
-        hideWaitingMessage();
-      }
-      
-      if (appState.currentPage === 'ban-phase' && 
-          appState.selectedFactions.length === formatConfig[appState.tournamentFormat].selectCount && 
-          appState.opponentSelectedFactions.length === formatConfig[appState.tournamentFormat].selectCount) {
-        hideWaitingMessage();
-      }
-    });
+    }
+  } else {
+    renderApp();
+  }
+  
+  // Проверяем, нужно ли скрыть индикатор ожидания
+  if (appState.currentPage === 'selecting-factions' && 
+      appState.opponentSelectedFactions && 
+      appState.opponentSelectedFactions.length === formatConfig[appState.tournamentFormat].selectCount) {
+    hideWaitingMessage();
+  }
+  
+  if (appState.currentPage === 'ban-phase' && 
+      appState.selectedFactions.length === formatConfig[appState.tournamentFormat].selectCount && 
+      appState.opponentSelectedFactions.length === formatConfig[appState.tournamentFormat].selectCount) {
+    hideWaitingMessage();
+  }
+});
     
     // Новый игрок присоединился к лобби
     socket.on('player-joined', (data) => {
@@ -789,73 +793,76 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Рендеринг страницы фазы банов
-  function renderBanPhase(container) {
-    container.innerHTML = `
-      <div class="gwent-app">
-        <div class="gwent-header">
-          <h1>Фаза банов</h1>
-          <div class="ban-timer" id="ban-timer">03:00</div>
-        </div>
-        
-        <div class="gwent-content">
-          <div class="ban-instruction">
-            <h3>Выберите 1 фракцию оппонента для бана</h3>
-          </div>
-          
-          <div class="opponent-factions">
-            <h4>Фракции оппонента:</h4>
-            <div class="factions-grid ban-grid">
-              ${getFactionsByIds(appState.opponentSelectedFactions).map(faction => `
-                <div class="faction-card ${appState.bannedFaction === faction.id ? 'selected' : ''}" 
-                     data-faction-id="${faction.id}"
-                     ${appState.selectionConfirmed ? 'disabled' : ''}>
-                  <div class="faction-image" style="background-image: url('${faction.image}')"></div>
-                  <div class="faction-name">${faction.name}</div>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-          
-          <button id="confirm-ban-btn" class="gwent-btn" ${appState.bannedFaction ? '' : 'disabled'}>Подтвердить бан</button>
-        </div>
+ // Рендеринг страницы фазы банов
+function renderBanPhase(container) {
+  // Добавим отладочный лог, чтобы увидеть состояние флага подтверждения
+  console.log('renderBanPhase, selectionConfirmed:', appState.selectionConfirmed);
+  
+  container.innerHTML = `
+    <div class="gwent-app">
+      <div class="gwent-header">
+        <h1>Фаза банов</h1>
+        <div class="ban-timer" id="ban-timer">03:00</div>
       </div>
-    `;
-    
-    // Запускаем отображение таймера
-    startBanTimer();
-    
-    // Добавляем обработчики для выбора бана
-    const factionCards = document.querySelectorAll('.faction-card');
-    const confirmButton = document.getElementById('confirm-ban-btn');
-    
-    factionCards.forEach(card => {
-      card.addEventListener('click', (e) => {
-        e.stopPropagation(); // Останавливаем всплытие события
+      
+      <div class="gwent-content">
+        <div class="ban-instruction">
+          <h3>Выберите 1 фракцию оппонента для бана</h3>
+        </div>
         
-        // Если подтверждение уже отправлено или карточка отключена, ничего не делаем
-        if (appState.selectionConfirmed || card.hasAttribute('disabled')) {
-          return;
-        }
+        <div class="opponent-factions">
+          <h4>Фракции оппонента:</h4>
+          <div class="factions-grid ban-grid">
+            ${getFactionsByIds(appState.opponentSelectedFactions).map(faction => `
+              <div class="faction-card ${appState.bannedFaction === faction.id ? 'selected' : ''}" 
+                   data-faction-id="${faction.id}"
+                   ${appState.selectionConfirmed ? 'disabled' : ''}>
+                <div class="faction-image" style="background-image: url('${faction.image}')"></div>
+                <div class="faction-name">${faction.name}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
         
-        // Сначала снимаем выбор со всех карточек
-        factionCards.forEach(c => c.classList.remove('selected'));
-        
-        // Выбираем текущую карточку
-        card.classList.add('selected');
-        appState.bannedFaction = card.getAttribute('data-faction-id');
-        
-        // Активируем кнопку подтверждения
-        confirmButton.disabled = false;
-      });
-    });
-    
-    confirmButton.addEventListener('click', () => {
-      if (!appState.selectionConfirmed) {
-        confirmFactionBan();
+        <button id="confirm-ban-btn" class="gwent-btn" ${appState.bannedFaction ? '' : 'disabled'}>Подтвердить бан</button>
+      </div>
+    </div>
+  `;
+  
+  // Запускаем отображение таймера
+  startBanTimer();
+  
+  // Добавляем обработчики для выбора бана
+  const factionCards = document.querySelectorAll('.faction-card');
+  const confirmButton = document.getElementById('confirm-ban-btn');
+  
+  factionCards.forEach(card => {
+    card.addEventListener('click', (e) => {
+      e.stopPropagation(); // Останавливаем всплытие события
+      
+      // Если подтверждение уже отправлено или карточка отключена, ничего не делаем
+      if (appState.selectionConfirmed || card.hasAttribute('disabled')) {
+        return;
       }
+      
+      // Сначала снимаем выбор со всех карточек
+      factionCards.forEach(c => c.classList.remove('selected'));
+      
+      // Выбираем текущую карточку
+      card.classList.add('selected');
+      appState.bannedFaction = card.getAttribute('data-faction-id');
+      
+      // Активируем кнопку подтверждения
+      confirmButton.disabled = false;
     });
-  }
+  });
+  
+  confirmButton.addEventListener('click', () => {
+    if (!appState.selectionConfirmed) {
+      confirmFactionBan();
+    }
+  });
+}
 
   // Запуск таймера банов
   function startBanTimer() {
