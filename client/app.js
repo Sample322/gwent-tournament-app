@@ -1092,7 +1092,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Добавим дополнительные стили для улучшения визуального эффекта при наведении и выборе фракций
   function addCustomStyles() {
     // Проверяем, существует ли уже элемент стиля
     let customStyle = document.getElementById('gwent-custom-styles');
@@ -1102,8 +1101,82 @@ document.addEventListener('DOMContentLoaded', () => {
       document.head.appendChild(customStyle);
     }
     
-    // Добавляем стили для улучшения внешнего вида при наведении и выборе
+    // Добавляем стили для улучшения внешнего вида
     customStyle.textContent = `
+      /* Улучшение фонового изображения */
+      .gwent-app {
+        background-size: 100% 100%;
+        background-position: center;
+        background-repeat: no-repeat;
+        position: relative;
+        overflow: hidden;
+      }
+      
+      /* Анимированный фон с дымом */
+      .gwent-app::before {
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.2));
+        opacity: 0.5;
+        pointer-events: none;
+        animation: smokeEffect 60s linear infinite;
+        z-index: 0;
+      }
+      
+      @keyframes smokeEffect {
+        0% {
+          background-position: 0% 0%;
+        }
+        50% {
+          background-position: 100% 100%;
+        }
+        100% {
+          background-position: 0% 0%;
+        }
+      }
+      
+      /* Эффект искр (частиц) */
+      .gwent-app::after {
+        content: "";
+        position: fixed;
+        width: 100%;
+        height: 100%;
+        background-image: 
+          radial-gradient(circle at 20% 30%, rgba(255, 215, 0, 0.1) 1px, transparent 1px),
+          radial-gradient(circle at 70% 65%, rgba(255, 215, 0, 0.1) 1px, transparent 1px),
+          radial-gradient(circle at 40% 85%, rgba(255, 215, 0, 0.1) 1px, transparent 1px),
+          radial-gradient(circle at 85% 15%, rgba(255, 215, 0, 0.1) 1px, transparent 1px);
+        background-size: 400px 400px;
+        pointer-events: none;
+        z-index: 1;
+        animation: sparkleEffect 20s linear infinite;
+      }
+      
+      @keyframes sparkleEffect {
+        0% {
+          background-position: 0px 0px, 0px 0px, 0px 0px, 0px 0px;
+        }
+        100% {
+          background-position: 400px 400px, -400px 400px, 400px -400px, -400px -400px;
+        }
+      }
+      
+      /* Убедимся, что контент поверх анимаций */
+      .gwent-content, .gwent-header {
+        position: relative;
+        z-index: 2;
+      }
+      
+      /* Добавляем затемнение фона для лучшей читаемости */
+      .gwent-content {
+        background-color: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(1px);
+      }
+      
       /* Стили для карточек фракций при наведении */
       .faction-card:hover {
         transform: scale(1.07);
@@ -1134,6 +1207,14 @@ document.addEventListener('DOMContentLoaded', () => {
         margin: 10px 0;
       }
       
+      /* Стили для изображений на всех экранах */
+      .faction-image {
+        height: 180px;
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center;
+      }
+      
       /* Стили для сетки фракций на стадии выбора */
       .select-factions .factions-grid {
         display: grid;
@@ -1143,14 +1224,6 @@ document.addEventListener('DOMContentLoaded', () => {
         width: 100%;
         max-width: 800px;
         margin: 0 auto 20px;
-      }
-      
-      /* Увеличиваем высоту изображений, чтобы они не были обрезаны */
-      .select-factions .faction-image {
-        height: 180px;
-        background-size: contain;
-        background-repeat: no-repeat;
-        background-position: center;
       }
       
       /* Стили для карточек на финальном экране */
