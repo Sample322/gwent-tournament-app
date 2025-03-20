@@ -50,8 +50,7 @@ app.post('/api/lobbies', (req, res) => {
 // Аналогично для других API и обработчиков socket.io
 // В каждом обновлении лобби обновляйте lastActivity
 
-// Например, в socket.on('confirm-faction-selection', ...)
-lobbies[lobbyCode].lastActivity = Date.now();
+
 
 // Запуск сервера
 const PORT = process.env.PORT || 3000;
