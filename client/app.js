@@ -349,11 +349,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Отправка выбранных фракций
   function confirmFactionSelection() {
-    // Убираем проверку на блокировку
-    // if (appState.factionSelectionsLocked) {
-    //   return;
-    // }
-    
     // Устанавливаем флаг подтверждения
     appState.selectionConfirmed = true;
     
@@ -393,11 +388,6 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Отправка бана фракции
   function confirmFactionBan() {
-    // Убираем проверку на блокировку
-    // if (appState.factionSelectionsLocked) {
-    //   return;
-    // }
-    
     // Устанавливаем флаг подтверждения
     appState.selectionConfirmed = true;
     
@@ -762,6 +752,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Останавливаем всплытие события
         e.stopPropagation();
         
+        // Если подтверждение уже отправлено или карточка отключена,
         // Если подтверждение уже отправлено или карточка отключена, ничего не делаем
         if (appState.selectionConfirmed || card.hasAttribute('disabled')) {
           return;
@@ -1092,6 +1083,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Функция для создания визуальных эффектов
+  function createVisualEffects() {
+    // Добавляем элементы для визуальных эффектов
+    let smokeEffect = document.getElementById('smoke-effect');
+    let particlesEffect = document.getElementById('particles-effect');
+    
+    if (!smokeEffect) {
+      smokeEffect = document.createElement('div');
+      smokeEffect.id = 'smoke-effect';
+      smokeEffect.className = 'smoke-effect';
+      document.body.appendChild(smokeEffect);
+    }
+    
+    if (!particlesEffect) {
+      particlesEffect = document.createElement('div');
+      particlesEffect.id = 'particles-effect';
+      particlesEffect.className = 'particles-effect';
+      document.body.appendChild(particlesEffect);
+    }
+  }
+
+  // Добавим дополнительные стили для улучшения визуального эффекта при наведении и выборе фракций
   function addCustomStyles() {
     // Проверяем, существует ли уже элемент стиля
     let customStyle = document.getElementById('gwent-custom-styles');
@@ -1105,70 +1118,60 @@ document.addEventListener('DOMContentLoaded', () => {
     customStyle.textContent = `
       /* Улучшение фонового изображения */
       .gwent-app {
-        background-size: 100% 100%;
+        background-size: auto 100%;
         background-position: center;
         background-repeat: no-repeat;
         position: relative;
         overflow: hidden;
       }
       
-      /* Анимированный фон с дымом */
-      .gwent-app::before {
-        content: "";
+      /* Эффект дыма */
+      .smoke-effect {
         position: fixed;
         top: 0;
         left: 0;
         width: 100%;
         height: 100%;
-        background: linear-gradient(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.2));
-        opacity: 0.5;
+        background-image: linear-gradient(rgba(0, 100, 100, 0.05), rgba(0, 50, 50, 0.1));
+        opacity: 0.4;
         pointer-events: none;
-        animation: smokeEffect 60s linear infinite;
-        z-index: 0;
+        z-index: 1;
+        animation: smokeMove 30s linear infinite;
       }
       
-      @keyframes smokeEffect {
-        0% {
-          background-position: 0% 0%;
-        }
-        50% {
-          background-position: 100% 100%;
-        }
-        100% {
-          background-position: 0% 0%;
-        }
+      @keyframes smokeMove {
+        0% { transform: translate(0, 0); }
+        50% { transform: translate(-10%, -10%); }
+        100% { transform: translate(0, 0); }
       }
       
-      /* Эффект искр (частиц) */
-      .gwent-app::after {
-        content: "";
+      /* Эффект светящихся частиц */
+      .particles-effect {
         position: fixed;
+        top: 0;
+        left: 0;
         width: 100%;
         height: 100%;
         background-image: 
-          radial-gradient(circle at 20% 30%, rgba(255, 215, 0, 0.1) 1px, transparent 1px),
-          radial-gradient(circle at 70% 65%, rgba(255, 215, 0, 0.1) 1px, transparent 1px),
-          radial-gradient(circle at 40% 85%, rgba(255, 215, 0, 0.1) 1px, transparent 1px),
-          radial-gradient(circle at 85% 15%, rgba(255, 215, 0, 0.1) 1px, transparent 1px);
-        background-size: 400px 400px;
+          radial-gradient(circle at 20% 30%, rgba(0, 255, 200, 0.15) 1px, transparent 2px),
+          radial-gradient(circle at 70% 65%, rgba(0, 255, 200, 0.15) 1px, transparent 2px),
+          radial-gradient(circle at 40% 85%, rgba(0, 255, 200, 0.15) 1px, transparent 2px),
+          radial-gradient(circle at 85% 15%, rgba(0, 255, 200, 0.15) 1px, transparent 2px);
+        background-size: 300px 300px;
         pointer-events: none;
-        z-index: 1;
-        animation: sparkleEffect 20s linear infinite;
+        z-index: 2;
+        animation: particlesMove 20s linear infinite;
       }
       
-      @keyframes sparkleEffect {
-        0% {
-          background-position: 0px 0px, 0px 0px, 0px 0px, 0px 0px;
-        }
-        100% {
-          background-position: 400px 400px, -400px 400px, 400px -400px, -400px -400px;
-        }
+      @keyframes particlesMove {
+        0% { background-position: 0px 0px, 0px 0px, 0px 0px, 0px 0px; }
+        100% { background-position: 300px 300px, -300px 300px, 300px -300px, -300px -300px; }
       }
       
       /* Убедимся, что контент поверх анимаций */
       .gwent-content, .gwent-header {
         position: relative;
-        z-index: 2;
+        z-index: 3;
       }
       
       /* Добавляем затемнение фона для лучшей читаемости */
@@ -1180,7 +1183,7 @@ document.addEventListener('DOMContentLoaded', () => {
       /* Стили для карточек фракций при наведении */
       .faction-card:hover {
         transform: scale(1.07);
-        box-shadow: 0 0 15px rgba(255, 215, 0, 0.7);
+        box-shadow: 0 0 15px rgba(0, 255, 200, 0.7);
         z-index: 10;
         transition: all 0.2s ease-in-out;
       }
@@ -1188,8 +1191,8 @@ document.addEventListener('DOMContentLoaded', () => {
       /* Стили для выбранных карточек фракций */
       .faction-card.selected {
         transform: scale(1.08);
-        box-shadow: 0 0 20px rgba(255, 215, 0, 0.9);
-        border: 3px solid #ffd700;
+        box-shadow: 0 0 20px rgba(0, 255, 200, 0.9);
+        border: 3px solid #00ffc8;
         z-index: 11;
       }
       
@@ -1234,7 +1237,7 @@ document.addEventListener('DOMContentLoaded', () => {
       
       .results-grid .faction-card:hover {
         transform: scale(1.05);
-        box-shadow: 0 0 15px rgba(255, 215, 0, 0.7);
+        box-shadow: 0 0 15px rgba(0, 255, 200, 0.7);
       }
       
       /* Стили для забаненных фракций на финальном экране */
@@ -1253,6 +1256,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Начальный рендеринг приложения и добавление стилей
   renderApp();
   addCustomStyles();
+  createVisualEffects();
 
   // Экспорт функций и состояния в глобальную область для отладки
   window.appState = appState;
