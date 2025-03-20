@@ -20,10 +20,9 @@ const PORT = process.env.PORT || 10000;
 // Настройка middleware
 app.use(express.json({ limit: '10kb' })); // Ограничиваем размер тела запроса
 
-// Статические файлы с кэшированием
-app.use(express.static(path.join(__dirname, '../client'), {
-  maxAge: '1h' // Кэширование на 1 час
-}));
+// Статические файлы без кэширования
+app.use(express.static(path.join(__dirname, '../client')));
+console.log('Путь к статическим файлам:', path.join(__dirname, '../client'));
 
 // Подключение к MongoDB (с обработкой ошибок)
 if (process.env.MONGODB_URI) {
@@ -71,7 +70,6 @@ app.post('/api/lobbies', (req, res) => {
     lobbyCode,
     creator,
     opponent: null,
-    spectators: [],
     status: 'waiting',
     tournamentFormat: tournamentFormat || 'bo3',
     creatorSelectedFactions: [],
@@ -89,7 +87,7 @@ app.post('/api/lobbies', (req, res) => {
 // API для присоединения к лобби
 app.put('/api/lobbies/:lobbyCode/join', (req, res) => {
   const { lobbyCode } = req.params;
-  const { playerId, playerName, isSpectator } = req.body;
+  const { playerId, playerName } = req.body;
   
   if (!lobbies[lobbyCode]) {
     return res.status(404).json({ message: 'Лобби не найдено' });
@@ -98,20 +96,15 @@ app.put('/api/lobbies/:lobbyCode/join', (req, res) => {
   // Обновляем отслеживание активности
   lobbies[lobbyCode].lastActivity = Date.now();
   
-  if (isSpectator) {
-    // Добавляем зрителя
-    lobbies[lobbyCode].spectators.push({ id: playerId, name: playerName });
-  } else {
-    // Добавляем оппонента
-    if (lobbies[lobbyCode].opponent) {
-      return res.status(400).json({ message: 'Лобби уже заполнено' });
-    }
-    
-    lobbies[lobbyCode].opponent = { id: playerId, name: playerName };
+  // Добавляем оппонента
+  if (lobbies[lobbyCode].opponent) {
+    return res.status(400).json({ message: 'Лобби уже заполнено' });
   }
   
+  lobbies[lobbyCode].opponent = { id: playerId, name: playerName };
+  
   // Уведомляем всех участников о присоединении нового игрока
-  io.to(lobbyCode).emit('player-joined', { playerId, playerName, isSpectator });
+  io.to(lobbyCode).emit('player-joined', { playerId, playerName });
   
   // Отправляем обновленную информацию о лобби
   io.to(lobbyCode).emit('lobby-update', lobbies[lobbyCode]);
@@ -236,14 +229,13 @@ io.on('connection', (socket) => {
     const lobby = lobbies[lobbyCode];
     
     // Сохраняем информацию о игроках
-    const { creator, opponent, spectators, tournamentFormat } = lobby;
+    const { creator, opponent, tournamentFormat } = lobby;
     
     // Сбрасываем лобби
     lobbies[lobbyCode] = {
       lobbyCode,
       creator,
       opponent,
-      spectators,
       status: 'waiting',
       tournamentFormat,
       creatorSelectedFactions: [],

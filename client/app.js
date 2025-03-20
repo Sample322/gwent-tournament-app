@@ -300,51 +300,91 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
   
-  // Присоединение к существующему лобби
-  async function joinLobby(asSpectator = false) {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/lobbies/${appState.lobbyCode}/join`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          playerId: appState.playerId,
-          playerName: appState.playerName,
-          isSpectator: asSpectator
-        })
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Ошибка присоединения к лобби');
-      }
-      
-      const lobby = await response.json();
-      
-      // Правильная обработка данных лобби
-      if (lobby.creator && lobby.creator.id === appState.playerId) {
-        appState.isCreator = true;
-        appState.opponent = lobby.opponent || null;
-      } else if (lobby.opponent && lobby.opponent.id === appState.playerId) {
-        appState.isCreator = false;
-        appState.opponent = lobby.creator;
-      }
-      
-      // Присоединяемся к комнате через Socket.IO
-      socket.emit('join-lobby', {
-        lobbyCode: appState.lobbyCode,
+  // Заменить функцию joinLobby в app.js (примерно строка 320)
+async function joinLobby() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/lobbies/${appState.lobbyCode}/join`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
         playerId: appState.playerId,
         playerName: appState.playerName
-      });
-      
-      appState.currentPage = 'lobby';
-      throttledRenderApp();
-    } catch (error) {
-      console.error('Ошибка присоединения к лобби:', error);
-      alert(`Ошибка: ${error.message}`);
+      })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Ошибка присоединения к лобби');
     }
+    
+    const lobby = await response.json();
+    
+    // Правильная обработка данных лобби
+    if (lobby.creator && lobby.creator.id === appState.playerId) {
+      appState.isCreator = true;
+      appState.opponent = lobby.opponent || null;
+    } else if (lobby.opponent && lobby.opponent.id === appState.playerId) {
+      appState.isCreator = false;
+      appState.opponent = lobby.creator;
+    }
+    
+    // Присоединяемся к комнате через Socket.IO
+    socket.emit('join-lobby', {
+      lobbyCode: appState.lobbyCode,
+      playerId: appState.playerId,
+      playerName: appState.playerName
+    });
+    
+    appState.currentPage = 'lobby';
+    throttledRenderApp();
+  } catch (error) {
+    console.error('Ошибка присоединения к лобби:', error);
+    alert(`Ошибка: ${error.message}`);
   }
+}
+
+// Также нужно заменить функцию renderJoinLobby чтобы удалить кнопку для зрителей
+function renderJoinLobby(container) {
+  container.innerHTML = `
+    <div class="gwent-app">
+      <div class="gwent-header">
+        <button id="back-btn" class="gwent-back-btn">← Назад</button>
+        <h1>Присоединение к лобби</h1>
+      </div>
+      
+      <div class="gwent-content">
+        <div class="lobby-join-form">
+          <label for="lobby-code">Введите код лобби:</label>
+          <input type="text" id="lobby-code" placeholder="Например: GWENT123">
+        </div>
+        
+        <div class="gwent-buttons">
+          <button id="join-lobby-confirm-btn" class="gwent-btn">Присоединиться к игре</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Обработчики событий
+  document.getElementById('back-btn').addEventListener('click', () => {
+    appState.currentPage = 'home';
+    throttledRenderApp();
+  });
+
+  document.getElementById('join-lobby-confirm-btn').addEventListener('click', () => {
+    const lobbyCode = document.getElementById('lobby-code').value.trim().toUpperCase();
+    
+    if (!lobbyCode) {
+      alert('Пожалуйста, введите код лобби');
+      return;
+    }
+    
+    appState.lobbyCode = lobbyCode;
+    joinLobby();
+  });
+}
   
   // Получение информации о лобби
   async function getLobbyInfo(lobbyCode) {
