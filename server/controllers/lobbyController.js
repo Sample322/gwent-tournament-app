@@ -13,10 +13,10 @@ const generateLobbyCode = () => {
 // Создание нового лобби
 exports.createLobby = async (req, res) => {
   try {
-    const { creator, tournamentStage } = req.body;
+    const { creator, tournamentFormat } = req.body;
     let { lobbyCode } = req.body;
     
-    console.log(`Попытка создания лобби:`, { creator, tournamentStage, lobbyCode });
+    console.log(`Попытка создания лобби:`, { creator, tournamentFormat, lobbyCode });
     
     // Если код не предоставлен, генерируем его
     if (!lobbyCode) {
@@ -51,9 +51,9 @@ exports.createLobby = async (req, res) => {
     const newLobby = new Lobby({
       lobbyCode,
       creator,
-      tournamentStage: tournamentStage || 'quarter-finals',
+      tournamentFormat: tournamentFormat || 'bo3',
       status: 'waiting',
-      opponent: null, // Важно: явно устанавливаем opponent как null
+      opponent: null,
       spectators: [],
       creatorSelectedFactions: [],
       opponentSelectedFactions: [],

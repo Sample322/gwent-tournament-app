@@ -18,10 +18,10 @@ const LobbySchema = new mongoose.Schema({
     id: String,
     name: String
   }],
-  tournamentStage: {
+  tournamentFormat: {
     type: String,
-    enum: ['quarter-finals', 'semi-finals', 'finals'],
-    default: 'quarter-finals'
+    enum: ['bo3', 'bo5'],
+    default: 'bo3'
   },
   creatorSelectedFactions: {
     type: [String],

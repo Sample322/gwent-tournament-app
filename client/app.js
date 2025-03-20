@@ -17,7 +17,6 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSocketListeners();
 
   // Состояние приложения
-  // Обновление состояния приложения - добавляем формат
 const appState = {
   currentPage: 'home',
   lobbyCode: null,
@@ -25,7 +24,7 @@ const appState = {
   playerId: WebApp.initDataUnsafe.user ? WebApp.initDataUnsafe.user.id.toString() : Math.random().toString(36).substring(2, 9),
   playerName: WebApp.initDataUnsafe.user ? WebApp.initDataUnsafe.user.first_name : '',
   opponent: null,
-  tournamentFormat: 'bo3', // Новое поле: 'bo3' или 'bo5'
+  tournamentFormat: 'bo3', // 'bo3' или 'bo5'
   selectedFactions: [],
   bannedFaction: null,
   remainingFactions: [],
@@ -36,7 +35,9 @@ const appState = {
   timerInterval: null,
   timerRemaining: 180, // 3 минуты в секундах
   status: 'waiting',
-  opponentSelectionStatus: { status: null, phase: null }
+  opponentSelectionStatus: { status: null, phase: null },
+  selectionConfirmed: false, // Добавляем флаг подтверждения выбора
+  factionSelectionsLocked: false // Блокировка выбора, когда оппонент подтвердил выбор
 };
 
 // Обновление фракций - добавляем Синдикат
@@ -49,6 +50,12 @@ const gwentFactions = [
   { id: 'syndicate', name: 'Синдикат', image: 'images/syndicate.png' }
 ];
 
+// Конфигурация для разных форматов
+const formatConfig = {
+  'bo3': { selectCount: 3, banCount: 1, maxRounds: 3 },
+  'bo5': { selectCount: 4, banCount: 1, maxRounds: 5 }
+};
+
   // Функция настройки обработчиков Socket.IO
   function setupSocketListeners() {
     socket.on('connect', () => {
@@ -60,7 +67,8 @@ const gwentFactions = [
       
       // Обновляем данные лобби
       appState.lobbyCode = lobby.lobbyCode;
-      appState.tournamentStage = lobby.tournamentStage;
+      appState.tournamentFormat = lobby.tournamentFormat || 'bo3';
+      appState.maxRounds = formatConfig[appState.tournamentFormat].maxRounds;
       
       // Определяем роль игрока и правильно устанавливаем данные оппонента
       if (lobby.creator && lobby.creator.id === appState.playerId) {
@@ -114,10 +122,8 @@ const gwentFactions = [
             } else {
               renderApp();
             }
-            // Если оба игрока выбрали фракции, скрываем индикатор ожидания
-            if (lobby.creatorSelectedFactions.length === 3 && lobby.opponentSelectedFactions.length === 3) {
-              hideWaitingMessage();
-            }
+            // Сбрасываем флаг подтверждения при переходе на новую фазу
+            appState.selectionConfirmed = false;
             break;
           case 'match-results':
             if (appState.currentPage !== 'match-results') {
@@ -137,13 +143,13 @@ const gwentFactions = [
       // Проверяем, нужно ли скрыть индикатор ожидания
       if (appState.currentPage === 'selecting-factions' && 
           appState.opponentSelectedFactions && 
-          appState.opponentSelectedFactions.length === 3) {
+          appState.opponentSelectedFactions.length === formatConfig[appState.tournamentFormat].selectCount) {
         hideWaitingMessage();
       }
       
       if (appState.currentPage === 'ban-phase' && 
-          appState.selectedFactions.length === 3 && 
-          appState.opponentSelectedFactions.length === 3) {
+          appState.selectedFactions.length === formatConfig[appState.tournamentFormat].selectCount && 
+          appState.opponentSelectedFactions.length === formatConfig[appState.tournamentFormat].selectCount) {
         hideWaitingMessage();
       }
     });
@@ -160,6 +166,9 @@ const gwentFactions = [
     // Начало фазы выбора фракций
     socket.on('faction-selection-started', () => {
       appState.currentPage = 'select-factions';
+      // Сбрасываем флаг подтверждения при начале новой фазы
+      appState.selectionConfirmed = false;
+      appState.factionSelectionsLocked = false;
       renderApp();
     });
     
@@ -167,6 +176,8 @@ const gwentFactions = [
     socket.on('opponent-factions-selected', (data) => {
       if (data.playerId !== appState.playerId) {
         appState.opponentSelectedFactions = data.selectedFactions;
+        // Если оппонент подтвердил выбор, блокируем возможность изменения нашего выбора
+        appState.factionSelectionsLocked = true;
         renderApp();
       }
     });
@@ -202,9 +213,17 @@ const gwentFactions = [
       if (playerId !== appState.playerId) {
         appState.opponentSelectionStatus = { status, phase };
         
-        // Если оппонент завершил свой выбор и мы завершили свой, скрыть сообщение ожидания
+        // Если оппонент завершил свой выбор и мы на той же фазе
         if (status === 'completed' && phase === appState.currentPage) {
-          hideWaitingMessage();
+          // Разблокируем выбор фракций, если мы еще не подтвердили свой выбор
+          if (!appState.selectionConfirmed) {
+            appState.factionSelectionsLocked = false;
+          }
+          
+          // Если оппонент завершил свой выбор и мы завершили свой, скрыть сообщение ожидания
+          if (appState.selectionConfirmed) {
+            hideWaitingMessage();
+          }
         }
         
         renderApp();
@@ -233,7 +252,7 @@ const gwentFactions = [
             id: appState.playerId,
             name: appState.playerName
           },
-          tournamentStage: appState.tournamentStage
+          tournamentFormat: appState.tournamentFormat // Добавляем формат турнира
         })
       });
       
@@ -327,6 +346,13 @@ const gwentFactions = [
 
   // Отправка выбранных фракций
   function confirmFactionSelection() {
+    if (appState.factionSelectionsLocked) {
+      return; // Если выбор заблокирован, ничего не делаем
+    }
+    
+    // Устанавливаем флаг подтверждения
+    appState.selectionConfirmed = true;
+    
     // Показываем диалог подтверждения
     showConfirmDialog(
       'Подтвердить выбор фракций?', 
@@ -354,7 +380,8 @@ const gwentFactions = [
         showWaitingMessage('Ожидание выбора оппонента...');
       },
       () => {
-        // При отмене ничего не делаем, пользователь может изменить свой выбор
+        // При отмене сбрасываем флаг подтверждения
+        appState.selectionConfirmed = false;
         hideDialog();
       }
     );
@@ -362,6 +389,13 @@ const gwentFactions = [
   
   // Отправка бана фракции
   function confirmFactionBan() {
+    if (appState.factionSelectionsLocked) {
+      return; // Если выбор заблокирован, ничего не делаем
+    }
+    
+    // Устанавливаем флаг подтверждения
+    appState.selectionConfirmed = true;
+    
     // Показываем диалог подтверждения
     const bannedFaction = getFactionsByIds([appState.bannedFaction])[0];
     showConfirmDialog(
@@ -390,7 +424,8 @@ const gwentFactions = [
         showWaitingMessage('Ожидание бана от оппонента...');
       },
       () => {
-        // При отмене ничего не делаем, пользователь может изменить свой выбор
+        // При отмене сбрасываем флаг подтверждения
+        appState.selectionConfirmed = false;
         hideDialog();
       }
     );
@@ -543,12 +578,11 @@ const gwentFactions = [
         </div>
         
         <div class="gwent-content">
-          <div class="tournament-stage-selector">
-            <h3>Выберите стадию турнира:</h3>
-            <select id="tournament-stage">
-              <option value="quarter-finals">Четвертьфинал</option>
-              <option value="semi-finals">Полуфинал</option>
-              <option value="finals">Финал</option>
+          <div class="format-selector">
+            <h3>Выберите формат:</h3>
+            <select id="tournament-format">
+              <option value="bo3">Best of 3 (выбор 3 колод)</option>
+              <option value="bo5">Best of 5 (выбор 4 колод)</option>
             </select>
           </div>
           
@@ -563,8 +597,9 @@ const gwentFactions = [
       renderApp();
     });
 
-    document.getElementById('tournament-stage').addEventListener('change', (e) => {
-      appState.tournamentStage = e.target.value;
+    document.getElementById('tournament-format').addEventListener('change', (e) => {
+      appState.tournamentFormat = e.target.value;
+      appState.maxRounds = formatConfig[appState.tournamentFormat].maxRounds;
     });
 
     document.getElementById('start-lobby-btn').addEventListener('click', () => {
@@ -660,8 +695,7 @@ const gwentFactions = [
             </div>
             
             <div class="tournament-info">
-              <h3>Стадия турнира: ${getTournamentStageName(appState.tournamentStage)}</h3>
-              <p>Формат: Best of 3</p>
+              <p>Формат: ${appState.tournamentFormat === 'bo3' ? 'Best of 3' : 'Best of 5'}</p>
             </div>
             
             ${appState.isCreator ? `
@@ -682,18 +716,10 @@ const gwentFactions = [
     }
   }
 
-  // Получение названия стадии турнира
-  function getTournamentStageName(stage) {
-    const stages = {
-      'quarter-finals': 'Четвертьфинал',
-      'semi-finals': 'Полуфинал',
-      'finals': 'Финал'
-    };
-    return stages[stage] || 'Неизвестная стадия';
-  }
-
   // Рендеринг страницы выбора фракций
   function renderSelectFactions(container) {
+    const selectCount = formatConfig[appState.tournamentFormat].selectCount;
+    
     container.innerHTML = `
       <div class="gwent-app">
         <div class="gwent-header">
@@ -702,20 +728,22 @@ const gwentFactions = [
         
         <div class="gwent-content">
           <div class="selection-instruction">
-            <h3>Выберите 3 фракции</h3>
-            <p>Выбрано: <span id="selection-count">${appState.selectedFactions.length}</span>/3</p>
+            <h3>Выберите ${selectCount} фракции</h3>
+            <p>Выбрано: <span id="selection-count">${appState.selectedFactions.length}</span>/${selectCount}</p>
           </div>
           
           <div class="factions-grid">
             ${gwentFactions.map(faction => `
-              <div class="faction-card ${appState.selectedFactions.includes(faction.id) ? 'selected' : ''}" data-faction-id="${faction.id}">
+              <div class="faction-card ${appState.selectedFactions.includes(faction.id) ? 'selected' : ''}" 
+                   data-faction-id="${faction.id}"
+                   ${appState.factionSelectionsLocked && !appState.selectedFactions.includes(faction.id) ? 'disabled' : ''}>
                 <div class="faction-image" style="background-image: url('${faction.image}')"></div>
                 <div class="faction-name">${faction.name}</div>
               </div>
             `).join('')}
           </div>
           
-          <button id="confirm-selection-btn" class="gwent-btn" ${appState.selectedFactions.length === 3 ? '' : 'disabled'}>Подтвердить выбор</button>
+          <button id="confirm-selection-btn" class="gwent-btn" ${appState.selectedFactions.length === selectCount ? '' : 'disabled'}>Подтвердить выбор</button>
         </div>
       </div>
     `;
@@ -725,14 +753,22 @@ const gwentFactions = [
     const confirmButton = document.getElementById('confirm-selection-btn');
     
     factionCards.forEach(card => {
-      card.addEventListener('click', () => {
+      card.addEventListener('click', (e) => {
+        // Останавливаем всплытие события
+        e.stopPropagation();
+        
+        // Если подтверждение уже отправлено или карточка отключена, ничего не делаем
+        if (appState.selectionConfirmed || card.hasAttribute('disabled')) {
+          return;
+        }
+        
         const factionId = card.getAttribute('data-faction-id');
         
         if (card.classList.contains('selected')) {
           // Отменяем выбор
           card.classList.remove('selected');
           appState.selectedFactions = appState.selectedFactions.filter(id => id !== factionId);
-        } else if (appState.selectedFactions.length < 3) {
+        } else if (appState.selectedFactions.length < selectCount) {
           // Выбираем фракцию
           card.classList.add('selected');
           appState.selectedFactions.push(factionId);
@@ -740,12 +776,14 @@ const gwentFactions = [
         
         // Обновляем счетчик и состояние кнопки
         document.getElementById('selection-count').textContent = appState.selectedFactions.length;
-        confirmButton.disabled = appState.selectedFactions.length !== 3;
+        confirmButton.disabled = appState.selectedFactions.length !== selectCount;
       });
     });
     
     confirmButton.addEventListener('click', () => {
-      confirmFactionSelection();
+      if (!appState.selectionConfirmed) {
+        confirmFactionSelection();
+      }
     });
   }
 
@@ -767,7 +805,9 @@ const gwentFactions = [
             <h4>Фракции оппонента:</h4>
             <div class="factions-grid ban-grid">
               ${getFactionsByIds(appState.opponentSelectedFactions).map(faction => `
-                <div class="faction-card ${appState.bannedFaction === faction.id ? 'selected' : ''}" data-faction-id="${faction.id}">
+                <div class="faction-card ${appState.bannedFaction === faction.id ? 'selected' : ''}" 
+                     data-faction-id="${faction.id}"
+                     ${appState.selectionConfirmed && appState.bannedFaction !== faction.id ? 'disabled' : ''}>
                   <div class="faction-image" style="background-image: url('${faction.image}')"></div>
                   <div class="faction-name">${faction.name}</div>
                 </div>
@@ -791,6 +831,11 @@ const gwentFactions = [
       card.addEventListener('click', (e) => {
         e.stopPropagation(); // Останавливаем всплытие события
         
+        // Если подтверждение уже отправлено или карточка отключена, ничего не делаем
+        if (appState.selectionConfirmed || card.hasAttribute('disabled')) {
+          return;
+        }
+        
         // Сначала снимаем выбор со всех карточек
         factionCards.forEach(c => c.classList.remove('selected'));
         
@@ -804,7 +849,9 @@ const gwentFactions = [
     });
     
     confirmButton.addEventListener('click', () => {
-      confirmFactionBan();
+      if (!appState.selectionConfirmed) {
+        confirmFactionBan();
+      }
     });
   }
 
@@ -845,8 +892,9 @@ const gwentFactions = [
 
   // Получение информации о фракциях по их ID
   function getFactionsByIds(ids) {
+    if (!ids || !Array.isArray(ids)) return [];
     return ids.map(id => gwentFactions.find(faction => faction.id === id) || 
-      { id: id, name: "Неизвестная фракция", image: "images/gwent-logo.png" });
+      { id: id, name: "Неизвестная фракция", image: "images/unknown-faction.png" });
   }
 
   // Рендеринг страницы результатов матча
@@ -860,13 +908,13 @@ const gwentFactions = [
     const opponentCoin = playerCoin === 'blue' ? 'red' : 'blue';
     
     // Находим забаненные фракции
-    const playerBannedFaction = appState.isCreator
-      ? getFactionsByIds([appState.opponentBannedFaction])[0]
-      : getFactionsByIds([appState.creatorBannedFaction])[0];
+    const playerBannedFaction = appState.opponentBannedFaction 
+      ? getFactionsByIds([appState.opponentBannedFaction])[0] 
+      : { id: "unknown", name: "Неизвестная фракция", image: "images/unknown-faction.png" };
       
-    const opponentBannedFaction = appState.isCreator
-      ? getFactionsByIds([appState.creatorBannedFaction])[0]
-      : getFactionsByIds([appState.opponentBannedFaction])[0];
+    const opponentBannedFaction = appState.bannedFaction
+      ? getFactionsByIds([appState.bannedFaction])[0]
+      : { id: "unknown", name: "Неизвестная фракция", image: "images/unknown-faction.png" };
     
     container.innerHTML = `
       <div class="gwent-app">
@@ -1010,8 +1058,53 @@ const gwentFactions = [
     }
   }
 
-  // Начальный рендеринг приложения
+  // Добавим дополнительные стили для улучшения визуального эффекта при наведении и выборе фракций
+  function addCustomStyles() {
+    // Проверяем, существует ли уже элемент стиля
+    let customStyle = document.getElementById('gwent-custom-styles');
+    if (!customStyle) {
+      customStyle = document.createElement('style');
+      customStyle.id = 'gwent-custom-styles';
+      document.head.appendChild(customStyle);
+    }
+    
+    // Добавляем стили для улучшения внешнего вида при наведении и выборе
+    customStyle.textContent = `
+      /* Стили для карточек фракций при наведении */
+      .faction-card:hover {
+        transform: scale(1.07);
+        box-shadow: 0 0 15px rgba(255, 215, 0, 0.7);
+        z-index: 10;
+        transition: all 0.2s ease-in-out;
+      }
+      
+      /* Стили для выбранных карточек фракций */
+      .faction-card.selected {
+        transform: scale(1.08);
+        box-shadow: 0 0 20px rgba(255, 215, 0, 0.9);
+        border: 3px solid #ffd700;
+        z-index: 11;
+      }
+      
+      /* Стили для отключенных карточек */
+      .faction-card[disabled] {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+      
+      /* Предотвращение перекрытия соседних элементов */
+      .factions-grid {
+        gap: 15px;
+        margin: 10px 0;
+      }
+    `;
+  }
+
+  // Начальный рендеринг приложения и добавление стилей
   renderApp();
+  addCustomStyles();
 
   // Экспорт функций и состояния в глобальную область для отладки
   window.appState = appState;
