@@ -17,44 +17,44 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSocketListeners();
 
   // Состояние приложения
-const appState = {
-  currentPage: 'home',
-  lobbyCode: null,
-  isCreator: false,
-  playerId: WebApp.initDataUnsafe.user ? WebApp.initDataUnsafe.user.id.toString() : Math.random().toString(36).substring(2, 9),
-  playerName: WebApp.initDataUnsafe.user ? WebApp.initDataUnsafe.user.first_name : '',
-  opponent: null,
-  tournamentFormat: 'bo3', // 'bo3' или 'bo5'
-  selectedFactions: [],
-  bannedFaction: null,
-  remainingFactions: [],
-  opponentSelectedFactions: [],
-  opponentRemainingFactions: [],
-  currentRound: 1,
-  maxRounds: 3, // Будет обновляться в зависимости от формата
-  timerInterval: null,
-  timerRemaining: 180, // 3 минуты в секундах
-  status: 'waiting',
-  opponentSelectionStatus: { status: null, phase: null },
-  selectionConfirmed: false, // Добавляем флаг подтверждения выбора
-  factionSelectionsLocked: false // Блокировка выбора, когда оппонент подтвердил выбор
-};
+  const appState = {
+    currentPage: 'home',
+    lobbyCode: null,
+    isCreator: false,
+    playerId: WebApp.initDataUnsafe.user ? WebApp.initDataUnsafe.user.id.toString() : Math.random().toString(36).substring(2, 9),
+    playerName: WebApp.initDataUnsafe.user ? WebApp.initDataUnsafe.user.first_name : '',
+    opponent: null,
+    tournamentFormat: 'bo3', // 'bo3' или 'bo5'
+    selectedFactions: [],
+    bannedFaction: null,
+    remainingFactions: [],
+    opponentSelectedFactions: [],
+    opponentRemainingFactions: [],
+    currentRound: 1,
+    maxRounds: 3, // Будет обновляться в зависимости от формата
+    timerInterval: null,
+    timerRemaining: 180, // 3 минуты в секундах
+    status: 'waiting',
+    opponentSelectionStatus: { status: null, phase: null },
+    selectionConfirmed: false, // Добавляем флаг подтверждения выбора
+    factionSelectionsLocked: false // Блокировка выбора, когда оппонент подтвердил выбор
+  };
 
-// Обновление фракций - добавляем Синдикат
-const gwentFactions = [
-  { id: 'northern-realms', name: 'Северные Королевства', image: 'images/northern-realms.png' },
-  { id: 'nilfgaard', name: 'Нильфгаард', image: 'images/nilfgaard.png' },
-  { id: 'monsters', name: 'Чудовища', image: 'images/monsters.png' },
-  { id: 'scoia-tael', name: 'Скоя\'таэли', image: 'images/scoia-tael.png' },
-  { id: 'skellige', name: 'Скеллиге', image: 'images/skellige.png' },
-  { id: 'syndicate', name: 'Синдикат', image: 'images/syndicate.png' }
-];
+  // Обновление фракций - добавляем Синдикат
+  const gwentFactions = [
+    { id: 'northern-realms', name: 'Северные Королевства', image: 'images/northern-realms.png' },
+    { id: 'nilfgaard', name: 'Нильфгаард', image: 'images/nilfgaard.png' },
+    { id: 'monsters', name: 'Чудовища', image: 'images/monsters.png' },
+    { id: 'scoia-tael', name: 'Скоя\'таэли', image: 'images/scoia-tael.png' },
+    { id: 'skellige', name: 'Скеллиге', image: 'images/skellige.png' },
+    { id: 'syndicate', name: 'Синдикат', image: 'images/syndicate.png' }
+  ];
 
-// Конфигурация для разных форматов
-const formatConfig = {
-  'bo3': { selectCount: 3, banCount: 1, maxRounds: 3 },
-  'bo5': { selectCount: 4, banCount: 1, maxRounds: 5 }
-};
+  // Конфигурация для разных форматов
+  const formatConfig = {
+    'bo3': { selectCount: 3, banCount: 1, maxRounds: 3 },
+    'bo5': { selectCount: 4, banCount: 1, maxRounds: 5 }
+  };
 
   // Функция настройки обработчиков Socket.IO
   function setupSocketListeners() {
@@ -176,8 +176,8 @@ const formatConfig = {
     socket.on('opponent-factions-selected', (data) => {
       if (data.playerId !== appState.playerId) {
         appState.opponentSelectedFactions = data.selectedFactions;
-        // Если оппонент подтвердил выбор, блокируем возможность изменения нашего выбора
-        appState.factionSelectionsLocked = true;
+        // Убираем блокировку выбора при получении выбора оппонента
+        // appState.factionSelectionsLocked = true; - удаляем эту строку
         renderApp();
       }
     });
@@ -346,9 +346,10 @@ const formatConfig = {
 
   // Отправка выбранных фракций
   function confirmFactionSelection() {
-    if (appState.factionSelectionsLocked) {
-      return; // Если выбор заблокирован, ничего не делаем
-    }
+    // Убираем проверку на блокировку
+    // if (appState.factionSelectionsLocked) {
+    //   return;
+    // }
     
     // Устанавливаем флаг подтверждения
     appState.selectionConfirmed = true;
@@ -389,9 +390,10 @@ const formatConfig = {
   
   // Отправка бана фракции
   function confirmFactionBan() {
-    if (appState.factionSelectionsLocked) {
-      return; // Если выбор заблокирован, ничего не делаем
-    }
+    // Убираем проверку на блокировку
+    // if (appState.factionSelectionsLocked) {
+    //   return;
+    // }
     
     // Устанавливаем флаг подтверждения
     appState.selectionConfirmed = true;
@@ -736,7 +738,7 @@ const formatConfig = {
             ${gwentFactions.map(faction => `
               <div class="faction-card ${appState.selectedFactions.includes(faction.id) ? 'selected' : ''}" 
                    data-faction-id="${faction.id}"
-                   ${appState.factionSelectionsLocked && !appState.selectedFactions.includes(faction.id) ? 'disabled' : ''}>
+                   ${appState.selectionConfirmed ? 'disabled' : ''}>
                 <div class="faction-image" style="background-image: url('${faction.image}')"></div>
                 <div class="faction-name">${faction.name}</div>
               </div>
@@ -807,7 +809,7 @@ const formatConfig = {
               ${getFactionsByIds(appState.opponentSelectedFactions).map(faction => `
                 <div class="faction-card ${appState.bannedFaction === faction.id ? 'selected' : ''}" 
                      data-faction-id="${faction.id}"
-                     ${appState.selectionConfirmed && appState.bannedFaction !== faction.id ? 'disabled' : ''}>
+                     ${appState.selectionConfirmed ? 'disabled' : ''}>
                   <div class="faction-image" style="background-image: url('${faction.image}')"></div>
                   <div class="faction-name">${faction.name}</div>
                 </div>
