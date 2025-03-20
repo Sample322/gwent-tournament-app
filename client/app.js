@@ -62,101 +62,100 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('Подключение к серверу установлено');
     });
 
-    // Исправление в функции установки слушателей сокетов
-socket.on('lobby-update', (lobby) => {
-  console.log('Получено обновление лобби:', lobby);
-  
-  // Обновляем данные лобби
-  appState.lobbyCode = lobby.lobbyCode;
-  appState.tournamentFormat = lobby.tournamentFormat || 'bo3';
-  appState.maxRounds = formatConfig[appState.tournamentFormat].maxRounds;
-  
-  // Определяем роль игрока и правильно устанавливаем данные оппонента
-  if (lobby.creator && lobby.creator.id === appState.playerId) {
-    appState.isCreator = true;
-    appState.opponent = lobby.opponent;
-  } else if (lobby.opponent && lobby.opponent.id === appState.playerId) {
-    appState.isCreator = false;
-    appState.opponent = lobby.creator;
-  }
-  
-  // Обновляем данные о фракциях
-  if (appState.isCreator) {
-    appState.selectedFactions = lobby.creatorSelectedFactions || [];
-    appState.bannedFaction = lobby.creatorBannedFaction;
-    appState.remainingFactions = lobby.creatorRemainingFactions || [];
-    appState.opponentSelectedFactions = lobby.opponentSelectedFactions || [];
-    appState.opponentRemainingFactions = lobby.opponentRemainingFactions || [];
-  } else {
-    appState.selectedFactions = lobby.opponentSelectedFactions || [];
-    appState.bannedFaction = lobby.opponentBannedFaction;
-    appState.remainingFactions = lobby.opponentRemainingFactions || [];
-    appState.opponentSelectedFactions = lobby.creatorSelectedFactions || [];
-    appState.opponentRemainingFactions = lobby.creatorRemainingFactions || [];
-  }
-  
-  // Обновление страницы в зависимости от статуса лобби
-  if (lobby.status !== appState.status) {
-    appState.status = lobby.status;
-    
-    switch (lobby.status) {
-      case 'waiting':
-        if (appState.currentPage !== 'lobby') {
-          appState.currentPage = 'lobby';
-          renderApp();
-        } else {
-          renderApp();
+    socket.on('lobby-update', (lobby) => {
+      console.log('Получено обновление лобби:', lobby);
+      
+      // Обновляем данные лобби
+      appState.lobbyCode = lobby.lobbyCode;
+      appState.tournamentFormat = lobby.tournamentFormat || 'bo3';
+      appState.maxRounds = formatConfig[appState.tournamentFormat].maxRounds;
+      
+      // Определяем роль игрока и правильно устанавливаем данные оппонента
+      if (lobby.creator && lobby.creator.id === appState.playerId) {
+        appState.isCreator = true;
+        appState.opponent = lobby.opponent;
+      } else if (lobby.opponent && lobby.opponent.id === appState.playerId) {
+        appState.isCreator = false;
+        appState.opponent = lobby.creator;
+      }
+      
+      // Обновляем данные о фракциях
+      if (appState.isCreator) {
+        appState.selectedFactions = lobby.creatorSelectedFactions || [];
+        appState.bannedFaction = lobby.creatorBannedFaction;
+        appState.remainingFactions = lobby.creatorRemainingFactions || [];
+        appState.opponentSelectedFactions = lobby.opponentSelectedFactions || [];
+        appState.opponentRemainingFactions = lobby.opponentRemainingFactions || [];
+      } else {
+        appState.selectedFactions = lobby.opponentSelectedFactions || [];
+        appState.bannedFaction = lobby.opponentBannedFaction;
+        appState.remainingFactions = lobby.opponentRemainingFactions || [];
+        appState.opponentSelectedFactions = lobby.creatorSelectedFactions || [];
+        appState.opponentRemainingFactions = lobby.creatorRemainingFactions || [];
+      }
+      
+      // Обновление страницы в зависимости от статуса лобби
+      if (lobby.status !== appState.status) {
+        appState.status = lobby.status;
+        
+        switch (lobby.status) {
+          case 'waiting':
+            if (appState.currentPage !== 'lobby') {
+              appState.currentPage = 'lobby';
+              renderApp();
+            } else {
+              renderApp();
+            }
+            break;
+          case 'selecting-factions':
+            if (appState.currentPage !== 'select-factions') {
+              appState.currentPage = 'select-factions';
+              // Сбрасываем флаг подтверждения при начале новой фазы
+              appState.selectionConfirmed = false;
+              renderApp();
+            } else {
+              renderApp();
+            }
+            break;
+          case 'banning':
+            if (appState.currentPage !== 'ban-phase') {
+              appState.currentPage = 'ban-phase';
+              // Сбрасываем флаги и состояние бана
+              appState.selectionConfirmed = false;
+              appState.bannedFaction = null; // Сбрасываем выбранную фракцию для бана
+              renderApp();
+            } else {
+              renderApp();
+            }
+            break;
+          case 'match-results':
+            if (appState.currentPage !== 'match-results') {
+              appState.currentPage = 'match-results';
+              renderApp();
+            } else {
+              renderApp();
+            }
+            break;
+          default:
+            renderApp();
         }
-        break;
-      case 'selecting-factions':
-        if (appState.currentPage !== 'select-factions') {
-          appState.currentPage = 'select-factions';
-          // Сбрасываем флаг подтверждения при начале новой фазы
-          appState.selectionConfirmed = false;
-          renderApp();
-        } else {
-          renderApp();
-        }
-        break;
-        case 'banning':  // Вот этот case нужно изменить
-        if (appState.currentPage !== 'ban-phase') {
-          appState.currentPage = 'ban-phase';
-          // Сбрасываем флаги и состояние бана
-          appState.selectionConfirmed = false;
-          appState.bannedFaction = null; // Сбрасываем выбранную фракцию для бана
-          renderApp();
-        } else {
-          renderApp();
-        }
-        break;
-      case 'match-results':
-        if (appState.currentPage !== 'match-results') {
-          appState.currentPage = 'match-results';
-          renderApp();
-        } else {
-          renderApp();
-        }
-        break;
-      default:
+      } else {
         renderApp();
-    }
-  } else {
-    renderApp();
-  }
-  
-  // Проверяем, нужно ли скрыть индикатор ожидания
-  if (appState.currentPage === 'selecting-factions' && 
-      appState.opponentSelectedFactions && 
-      appState.opponentSelectedFactions.length === formatConfig[appState.tournamentFormat].selectCount) {
-    hideWaitingMessage();
-  }
-  
-  if (appState.currentPage === 'ban-phase' && 
-      appState.selectedFactions.length === formatConfig[appState.tournamentFormat].selectCount && 
-      appState.opponentSelectedFactions.length === formatConfig[appState.tournamentFormat].selectCount) {
-    hideWaitingMessage();
-  }
-});
+      }
+      
+      // Проверяем, нужно ли скрыть индикатор ожидания
+      if (appState.currentPage === 'selecting-factions' && 
+          appState.opponentSelectedFactions && 
+          appState.opponentSelectedFactions.length === formatConfig[appState.tournamentFormat].selectCount) {
+        hideWaitingMessage();
+      }
+      
+      if (appState.currentPage === 'ban-phase' && 
+          appState.selectedFactions.length === formatConfig[appState.tournamentFormat].selectCount && 
+          appState.opponentSelectedFactions.length === formatConfig[appState.tournamentFormat].selectCount) {
+        hideWaitingMessage();
+      }
+    });
     
     // Новый игрок присоединился к лобби
     socket.on('player-joined', (data) => {
@@ -727,7 +726,7 @@ socket.on('lobby-update', (lobby) => {
     const selectCount = formatConfig[appState.tournamentFormat].selectCount;
     
     container.innerHTML = `
-      <div class="gwent-app">
+      <div class="gwent-app select-factions">
         <div class="gwent-header">
           <h1>Выбор фракций</h1>
         </div>
@@ -793,76 +792,76 @@ socket.on('lobby-update', (lobby) => {
     });
   }
 
- // Рендеринг страницы фазы банов
-function renderBanPhase(container) {
-  // Добавим отладочный лог, чтобы увидеть состояние флага подтверждения
-  console.log('renderBanPhase, selectionConfirmed:', appState.selectionConfirmed);
-  
-  container.innerHTML = `
-    <div class="gwent-app">
-      <div class="gwent-header">
-        <h1>Фаза банов</h1>
-        <div class="ban-timer" id="ban-timer">03:00</div>
-      </div>
-      
-      <div class="gwent-content">
-        <div class="ban-instruction">
-          <h3>Выберите 1 фракцию оппонента для бана</h3>
+  // Рендеринг страницы фазы банов
+  function renderBanPhase(container) {
+    // Добавим отладочный лог, чтобы увидеть состояние флага подтверждения
+    console.log('renderBanPhase, selectionConfirmed:', appState.selectionConfirmed);
+    
+    container.innerHTML = `
+      <div class="gwent-app">
+        <div class="gwent-header">
+          <h1>Фаза банов</h1>
+          <div class="ban-timer" id="ban-timer">03:00</div>
         </div>
         
-        <div class="opponent-factions">
-          <h4>Фракции оппонента:</h4>
-          <div class="factions-grid ban-grid">
-            ${getFactionsByIds(appState.opponentSelectedFactions).map(faction => `
-              <div class="faction-card ${appState.bannedFaction === faction.id ? 'selected' : ''}" 
-                   data-faction-id="${faction.id}"
-                   ${appState.selectionConfirmed ? 'disabled' : ''}>
-                <div class="faction-image" style="background-image: url('${faction.image}')"></div>
-                <div class="faction-name">${faction.name}</div>
-              </div>
-            `).join('')}
+        <div class="gwent-content">
+          <div class="ban-instruction">
+            <h3>Выберите 1 фракцию оппонента для бана</h3>
           </div>
+          
+          <div class="opponent-factions">
+            <h4>Фракции оппонента:</h4>
+            <div class="factions-grid ban-grid">
+              ${getFactionsByIds(appState.opponentSelectedFactions).map(faction => `
+                <div class="faction-card ${appState.bannedFaction === faction.id ? 'selected' : ''}" 
+                     data-faction-id="${faction.id}"
+                     ${appState.selectionConfirmed ? 'disabled' : ''}>
+                  <div class="faction-image" style="background-image: url('${faction.image}')"></div>
+                  <div class="faction-name">${faction.name}</div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          
+          <button id="confirm-ban-btn" class="gwent-btn" ${appState.bannedFaction ? '' : 'disabled'}>Подтвердить бан</button>
         </div>
-        
-        <button id="confirm-ban-btn" class="gwent-btn" ${appState.bannedFaction ? '' : 'disabled'}>Подтвердить бан</button>
       </div>
-    </div>
-  `;
-  
-  // Запускаем отображение таймера
-  startBanTimer();
-  
-  // Добавляем обработчики для выбора бана
-  const factionCards = document.querySelectorAll('.faction-card');
-  const confirmButton = document.getElementById('confirm-ban-btn');
-  
-  factionCards.forEach(card => {
-    card.addEventListener('click', (e) => {
-      e.stopPropagation(); // Останавливаем всплытие события
-      
-      // Если подтверждение уже отправлено или карточка отключена, ничего не делаем
-      if (appState.selectionConfirmed || card.hasAttribute('disabled')) {
-        return;
-      }
-      
-      // Сначала снимаем выбор со всех карточек
-      factionCards.forEach(c => c.classList.remove('selected'));
-      
-      // Выбираем текущую карточку
-      card.classList.add('selected');
-      appState.bannedFaction = card.getAttribute('data-faction-id');
-      
-      // Активируем кнопку подтверждения
-      confirmButton.disabled = false;
+    `;
+    
+    // Запускаем отображение таймера
+    startBanTimer();
+    
+    // Добавляем обработчики для выбора бана
+    const factionCards = document.querySelectorAll('.faction-card');
+    const confirmButton = document.getElementById('confirm-ban-btn');
+    
+    factionCards.forEach(card => {
+      card.addEventListener('click', (e) => {
+        e.stopPropagation(); // Останавливаем всплытие события
+        
+        // Если подтверждение уже отправлено или карточка отключена, ничего не делаем
+        if (appState.selectionConfirmed || card.hasAttribute('disabled')) {
+          return;
+        }
+        
+        // Сначала снимаем выбор со всех карточек
+        factionCards.forEach(c => c.classList.remove('selected'));
+        
+        // Выбираем текущую карточку
+        card.classList.add('selected');
+        appState.bannedFaction = card.getAttribute('data-faction-id');
+        
+        // Активируем кнопку подтверждения
+        confirmButton.disabled = false;
+      });
     });
-  });
-  
-  confirmButton.addEventListener('click', () => {
-    if (!appState.selectionConfirmed) {
-      confirmFactionBan();
-    }
-  });
-}
+    
+    confirmButton.addEventListener('click', () => {
+      if (!appState.selectionConfirmed) {
+        confirmFactionBan();
+      }
+    });
+  }
 
   // Запуск таймера банов
   function startBanTimer() {
@@ -909,21 +908,47 @@ function renderBanPhase(container) {
   // Рендеринг страницы результатов матча
   function renderMatchResults(container) {
     // Определяем, какую монетку получает каждый игрок
-    // Используем lobbyCode как seed для псевдорандома чтобы обеспечить одинаковый результат для обоих игроков
     const seed = appState.lobbyCode.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     const isCreatorBlueCoin = seed % 2 === 0;
     
     const playerCoin = appState.isCreator ? (isCreatorBlueCoin ? 'blue' : 'red') : (isCreatorBlueCoin ? 'red' : 'blue');
     const opponentCoin = playerCoin === 'blue' ? 'red' : 'blue';
     
-    // Находим забаненные фракции
-    const playerBannedFaction = appState.opponentBannedFaction 
-      ? getFactionsByIds([appState.opponentBannedFaction])[0] 
-      : { id: "unknown", name: "Неизвестная фракция", image: "images/unknown-faction.png" };
-      
-    const opponentBannedFaction = appState.bannedFaction
-      ? getFactionsByIds([appState.bannedFaction])[0]
-      : { id: "unknown", name: "Неизвестная фракция", image: "images/unknown-faction.png" };
+    // Находим забаненные фракции - начало исправлений
+    // Определяем забаненную фракцию игрока
+    const playerSelectedFactions = appState.selectedFactions;
+    const playerRemainingFactions = appState.remainingFactions;
+    const playerBannedFactionId = playerSelectedFactions.find(id => !playerRemainingFactions.includes(id));
+    
+    let playerBannedFaction;
+    if (playerBannedFactionId && gwentFactions.some(f => f.id === playerBannedFactionId)) {
+      playerBannedFaction = gwentFactions.find(f => f.id === playerBannedFactionId);
+    } else {
+      console.log('Не найдена забаненная фракция игрока:', playerBannedFactionId);
+      playerBannedFaction = { 
+        id: "unknown", 
+        name: "Неизвестная фракция", 
+        image: "images/unknown-faction.png" 
+      };
+    }
+    
+    // Определяем забаненную фракцию оппонента
+    const opponentSelectedFactions = appState.opponentSelectedFactions;
+    const opponentRemainingFactions = appState.opponentRemainingFactions;
+    const opponentBannedFactionId = opponentSelectedFactions.find(id => !opponentRemainingFactions.includes(id));
+    
+    let opponentBannedFaction;
+    if (opponentBannedFactionId && gwentFactions.some(f => f.id === opponentBannedFactionId)) {
+      opponentBannedFaction = gwentFactions.find(f => f.id === opponentBannedFactionId);
+    } else {
+      console.log('Не найдена забаненная фракция оппонента:', opponentBannedFactionId);
+      opponentBannedFaction = { 
+        id: "unknown", 
+        name: "Неизвестная фракция", 
+        image: "images/unknown-faction.png" 
+      };
+    }
+    // Конец исправлений для забаненных фракций
     
     container.innerHTML = `
       <div class="gwent-app">
@@ -1107,6 +1132,47 @@ function renderBanPhase(container) {
       .factions-grid {
         gap: 15px;
         margin: 10px 0;
+      }
+      
+      /* Стили для сетки фракций на стадии выбора */
+      .select-factions .factions-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        grid-template-rows: repeat(2, auto);
+        gap: 15px;
+        width: 100%;
+        max-width: 800px;
+        margin: 0 auto 20px;
+      }
+      
+      /* Увеличиваем высоту изображений, чтобы они не были обрезаны */
+      .select-factions .faction-image {
+        height: 180px;
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center;
+      }
+      
+      /* Стили для карточек на финальном экране */
+      .results-grid .faction-card {
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+      
+      .results-grid .faction-card:hover {
+        transform: scale(1.05);
+        box-shadow: 0 0 15px rgba(255, 215, 0, 0.7);
+      }
+      
+      /* Стили для забаненных фракций на финальном экране */
+      .banned-faction .faction-card.banned {
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+      
+      .banned-faction .faction-card.banned:hover {
+        transform: scale(1.05);
+        box-shadow: 0 0 15px rgba(231, 76, 60, 0.7);
       }
     `;
   }
