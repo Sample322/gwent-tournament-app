@@ -1,45 +1,57 @@
-require('dotenv').config();
 const express = require('express');
 const http = require('http');
-const path = require('path');
-const cors = require('cors');
-const mongoose = require('mongoose');
 const socketIo = require('socket.io');
-const lobbyRoutes = require('./routes/lobbyRoutes');
+const path = require('path');
+const compression = require('compression');
+const { v4: uuidv4 } = require('uuid');
 
-// Инициализация приложения
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  }
+const io = socketIo(server);
+
+// Включаем сжатие ответов
+app.use(compression());
+
+// Статические файлы с кэшированием
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '1h' // Кэширование на 1 час
+}));
+
+// Ограничиваем размер тела запроса
+app.use(express.json({ limit: '10kb' }));
+
+// Хранение данных лобби с отслеживанием активности
+const lobbies = {};
+
+// Очистка неактивных лобби каждый час
+setInterval(() => {
+  const now = Date.now();
+  Object.keys(lobbies).forEach(lobbyCode => {
+    // Удаляем лобби, неактивные более 2 часов
+    if (lobbies[lobbyCode].lastActivity && now - lobbies[lobbyCode].lastActivity > 7200000) {
+      delete lobbies[lobbyCode];
+      console.log(`Удалено неактивное лобби: ${lobbyCode}`);
+    }
+  });
+}, 3600000);
+
+// Остальной код server.js...
+
+// Обновление функций API и Socket.IO для отслеживания активности
+app.post('/api/lobbies', (req, res) => {
+  // ... существующий код ...
+  
+  // Добавляем отслеживание активности
+  lobbies[lobbyCode].lastActivity = Date.now();
+  
+  res.status(201).json(lobbies[lobbyCode]);
 });
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname, '../client')));
+// Аналогично для других API и обработчиков socket.io
+// В каждом обновлении лобби обновляйте lastActivity
 
-// API Routes
-app.use('/api/lobbies', lobbyRoutes);
-
-// Socket.io логика
-require('./socket/lobbySocket')(io);
-
-// Маршрут для фронтенда
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../client/index.html'));
-});
-
-// Подключение к MongoDB
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => console.log('MongoDB подключено'))
-.catch(err => console.error('Ошибка подключения к MongoDB:', err));
+// Например, в socket.on('confirm-faction-selection', ...)
+lobbies[lobbyCode].lastActivity = Date.now();
 
 // Запуск сервера
 const PORT = process.env.PORT || 3000;
