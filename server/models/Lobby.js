@@ -14,6 +14,10 @@ const LobbySchema = new mongoose.Schema({
     id: String,
     name: String
   },
+  spectators: [{
+    id: String,
+    name: String
+  }],
   tournamentFormat: {
     type: String,
     enum: ['bo3', 'bo5'],

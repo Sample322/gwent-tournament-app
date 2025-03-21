@@ -54,6 +54,7 @@ exports.createLobby = async (req, res) => {
       tournamentFormat: tournamentFormat || 'bo3',
       status: 'waiting',
       opponent: null,
+      spectators: [],
       creatorSelectedFactions: [],
       opponentSelectedFactions: [],
       creatorBannedFaction: null,
@@ -92,9 +93,9 @@ exports.getLobby = async (req, res) => {
 exports.joinLobby = async (req, res) => {
   try {
     const { lobbyCode } = req.params;
-    const { playerId, playerName } = req.body;
+    const { playerId, playerName, isSpectator } = req.body;
     
-    console.log(`Попытка присоединения к лобби ${lobbyCode}:`, { playerId, playerName });
+    console.log(`Попытка присоединения к лобби ${lobbyCode}:`, { playerId, playerName, isSpectator });
     
     const lobby = await Lobby.findOne({ lobbyCode });
     if (!lobby) {
@@ -105,7 +106,8 @@ exports.joinLobby = async (req, res) => {
     console.log(`Текущее состояние лобби ${lobbyCode}:`, {
       status: lobby.status,
       creator: lobby.creator,
-      opponent: lobby.opponent || 'null'
+      opponent: lobby.opponent || 'null',
+      spectators: lobby.spectators
     });
     
     // Проверяем, является ли игрок создателем
@@ -120,28 +122,46 @@ exports.joinLobby = async (req, res) => {
       return res.status(200).json(lobby);
     }
     
-    // Проверяем, не занята ли позиция оппонента
-    if (lobby.opponent && lobby.opponent.id) {
-      console.log(`Позиция оппонента уже занята игроком ${lobby.opponent.id}`);
-      return res.status(400).json({ message: 'Лобби уже заполнено' });
+    // Если игрок хочет присоединиться как зритель
+    if (isSpectator) {
+      console.log(`Игрок ${playerId} присоединяется как зритель`);
+      // Проверяем, не является ли уже зрителем
+      const isAlreadySpectator = lobby.spectators && lobby.spectators.some(s => s.id === playerId);
+      if (!isAlreadySpectator) {
+        if (!lobby.spectators) {
+          lobby.spectators = [];
+        }
+        lobby.spectators.push({ id: playerId, name: playerName });
+        console.log(`Игрок ${playerId} добавлен как зритель`);
+      }
+    } else {
+      // Игрок хочет присоединиться как оппонент
+      
+      // Проверяем, не занята ли позиция оппонента
+      // Учитываем, что mongoose может сохранить пустой объект вместо null
+      if (lobby.opponent && lobby.opponent.id) {
+        console.log(`Позиция оппонента уже занята игроком ${lobby.opponent.id}`);
+        return res.status(400).json({ message: 'Лобби уже заполнено, вы можете присоединиться как зритель' });
+      }
+      
+      // Если игра уже началась, нельзя присоединиться как игрок
+      if (lobby.status !== 'waiting') {
+        console.log(`Лобби в статусе ${lobby.status}, нельзя присоединиться как игрок`);
+        return res.status(400).json({ message: 'Нельзя присоединиться к лобби, игра уже началась' });
+      }
+      
+      // Добавляем игрока как оппонента
+      console.log(`Добавление игрока ${playerId} как оппонента`);
+      lobby.opponent = { id: playerId, name: playerName };
     }
-    
-    // Если игра уже началась, нельзя присоединиться как игрок
-    if (lobby.status !== 'waiting') {
-      console.log(`Лобби в статусе ${lobby.status}, нельзя присоединиться`);
-      return res.status(400).json({ message: 'Нельзя присоединиться к лобби, игра уже началась' });
-    }
-    
-    // Добавляем игрока как оппонента
-    console.log(`Добавление игрока ${playerId} как оппонента`);
-    lobby.opponent = { id: playerId, name: playerName };
     
     await lobby.save();
     console.log(`Лобби ${lobbyCode} обновлено успешно`);
     console.log(`Новое состояние лобби:`, {
       status: lobby.status,
       creator: lobby.creator,
-      opponent: lobby.opponent
+      opponent: lobby.opponent,
+      spectators: lobby.spectators
     });
     res.status(200).json(lobby);
   } catch (error) {

@@ -37,9 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     status: 'waiting',
     opponentSelectionStatus: { status: null, phase: null },
     selectionConfirmed: false, // Добавляем флаг подтверждения выбора
-    factionSelectionsLocked: false, // Блокировка выбора, когда оппонент подтвердил выбор
-    currentLobby: null, // Для оптимизации обновлений
-    throttleTimer: null // Для оптимизации рендеринга
+    factionSelectionsLocked: false // Блокировка выбора, когда оппонент подтвердил выбор
   };
 
   // Обновление фракций - добавляем Синдикат
@@ -67,100 +65,95 @@ document.addEventListener('DOMContentLoaded', () => {
     socket.on('lobby-update', (lobby) => {
       console.log('Получено обновление лобби:', lobby);
       
-      // Обновляем только если данные действительно изменились
-      if (JSON.stringify(lobby) !== JSON.stringify(appState.currentLobby)) {
-        appState.currentLobby = lobby;
+      // Обновляем данные лобби
+      appState.lobbyCode = lobby.lobbyCode;
+      appState.tournamentFormat = lobby.tournamentFormat || 'bo3';
+      appState.maxRounds = formatConfig[appState.tournamentFormat].maxRounds;
+      
+      // Определяем роль игрока и правильно устанавливаем данные оппонента
+      if (lobby.creator && lobby.creator.id === appState.playerId) {
+        appState.isCreator = true;
+        appState.opponent = lobby.opponent;
+      } else if (lobby.opponent && lobby.opponent.id === appState.playerId) {
+        appState.isCreator = false;
+        appState.opponent = lobby.creator;
+      }
+      
+      // Обновляем данные о фракциях
+      if (appState.isCreator) {
+        appState.selectedFactions = lobby.creatorSelectedFactions || [];
+        appState.bannedFaction = lobby.creatorBannedFaction;
+        appState.remainingFactions = lobby.creatorRemainingFactions || [];
+        appState.opponentSelectedFactions = lobby.opponentSelectedFactions || [];
+        appState.opponentRemainingFactions = lobby.opponentRemainingFactions || [];
+      } else {
+        appState.selectedFactions = lobby.opponentSelectedFactions || [];
+        appState.bannedFaction = lobby.opponentBannedFaction;
+        appState.remainingFactions = lobby.opponentRemainingFactions || [];
+        appState.opponentSelectedFactions = lobby.creatorSelectedFactions || [];
+        appState.opponentRemainingFactions = lobby.creatorRemainingFactions || [];
+      }
+      
+      // Обновление страницы в зависимости от статуса лобби
+      if (lobby.status !== appState.status) {
+        appState.status = lobby.status;
         
-        // Обновляем данные лобби
-        appState.lobbyCode = lobby.lobbyCode;
-        appState.tournamentFormat = lobby.tournamentFormat || 'bo3';
-        appState.maxRounds = formatConfig[appState.tournamentFormat].maxRounds;
-        
-        // Определяем роль игрока и правильно устанавливаем данные оппонента
-        if (lobby.creator && lobby.creator.id === appState.playerId) {
-          appState.isCreator = true;
-          appState.opponent = lobby.opponent;
-        } else if (lobby.opponent && lobby.opponent.id === appState.playerId) {
-          appState.isCreator = false;
-          appState.opponent = lobby.creator;
+        switch (lobby.status) {
+          case 'waiting':
+            if (appState.currentPage !== 'lobby') {
+              appState.currentPage = 'lobby';
+              renderApp();
+            } else {
+              renderApp();
+            }
+            break;
+          case 'selecting-factions':
+            if (appState.currentPage !== 'select-factions') {
+              appState.currentPage = 'select-factions';
+              // Сбрасываем флаг подтверждения при начале новой фазы
+              appState.selectionConfirmed = false;
+              renderApp();
+            } else {
+              renderApp();
+            }
+            break;
+          case 'banning':
+            if (appState.currentPage !== 'ban-phase') {
+              appState.currentPage = 'ban-phase';
+              // Сбрасываем флаги и состояние бана
+              appState.selectionConfirmed = false;
+              appState.bannedFaction = null; // Сбрасываем выбранную фракцию для бана
+              renderApp();
+            } else {
+              renderApp();
+            }
+            break;
+          case 'match-results':
+            if (appState.currentPage !== 'match-results') {
+              appState.currentPage = 'match-results';
+              renderApp();
+            } else {
+              renderApp();
+            }
+            break;
+          default:
+            renderApp();
         }
-        
-        // Обновляем данные о фракциях
-        if (appState.isCreator) {
-          appState.selectedFactions = lobby.creatorSelectedFactions || [];
-          appState.bannedFaction = lobby.creatorBannedFaction;
-          appState.remainingFactions = lobby.creatorRemainingFactions || [];
-          appState.opponentSelectedFactions = lobby.opponentSelectedFactions || [];
-          appState.opponentRemainingFactions = lobby.opponentRemainingFactions || [];
-        } else {
-          appState.selectedFactions = lobby.opponentSelectedFactions || [];
-          appState.bannedFaction = lobby.opponentBannedFaction;
-          appState.remainingFactions = lobby.opponentRemainingFactions || [];
-          appState.opponentSelectedFactions = lobby.creatorSelectedFactions || [];
-          appState.opponentRemainingFactions = lobby.creatorRemainingFactions || [];
-        }
-        
-        // Обновление страницы в зависимости от статуса лобби
-        if (lobby.status !== appState.status) {
-          appState.status = lobby.status;
-          
-          switch (lobby.status) {
-            case 'waiting':
-              if (appState.currentPage !== 'lobby') {
-                appState.currentPage = 'lobby';
-                throttledRenderApp();
-              } else {
-                throttledRenderApp();
-              }
-              break;
-            case 'selecting-factions':
-              if (appState.currentPage !== 'select-factions') {
-                appState.currentPage = 'select-factions';
-                // Сбрасываем флаг подтверждения при начале новой фазы
-                appState.selectionConfirmed = false;
-                throttledRenderApp();
-              } else {
-                throttledRenderApp();
-              }
-              break;
-            case 'banning':
-              if (appState.currentPage !== 'ban-phase') {
-                appState.currentPage = 'ban-phase';
-                // Сбрасываем флаги и состояние бана
-                appState.selectionConfirmed = false;
-                appState.bannedFaction = null; // Сбрасываем выбранную фракцию для бана
-                throttledRenderApp();
-              } else {
-                throttledRenderApp();
-              }
-              break;
-            case 'match-results':
-              if (appState.currentPage !== 'match-results') {
-                appState.currentPage = 'match-results';
-                throttledRenderApp();
-              } else {
-                throttledRenderApp();
-              }
-              break;
-            default:
-              throttledRenderApp();
-          }
-        } else {
-          throttledRenderApp();
-        }
-        
-        // Проверяем, нужно ли скрыть индикатор ожидания
-        if (appState.currentPage === 'selecting-factions' && 
-            appState.opponentSelectedFactions && 
-            appState.opponentSelectedFactions.length === formatConfig[appState.tournamentFormat].selectCount) {
-          hideWaitingMessage();
-        }
-        
-        if (appState.currentPage === 'ban-phase' && 
-            appState.selectedFactions.length === formatConfig[appState.tournamentFormat].selectCount && 
-            appState.opponentSelectedFactions.length === formatConfig[appState.tournamentFormat].selectCount) {
-          hideWaitingMessage();
-        }
+      } else {
+        renderApp();
+      }
+      
+      // Проверяем, нужно ли скрыть индикатор ожидания
+      if (appState.currentPage === 'selecting-factions' && 
+          appState.opponentSelectedFactions && 
+          appState.opponentSelectedFactions.length === formatConfig[appState.tournamentFormat].selectCount) {
+        hideWaitingMessage();
+      }
+      
+      if (appState.currentPage === 'ban-phase' && 
+          appState.selectedFactions.length === formatConfig[appState.tournamentFormat].selectCount && 
+          appState.opponentSelectedFactions.length === formatConfig[appState.tournamentFormat].selectCount) {
+        hideWaitingMessage();
       }
     });
     
@@ -169,7 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
       console.log('Игрок присоединился:', data);
       if (data.playerId !== appState.playerId) {
         // Только обновляем UI, данные будут установлены через lobby-update
-        throttledRenderApp();
+        renderApp();
       }
     });
     
@@ -179,7 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Сбрасываем флаг подтверждения при начале новой фазы
       appState.selectionConfirmed = false;
       appState.factionSelectionsLocked = false;
-      throttledRenderApp();
+      renderApp();
     });
     
     // Получение выбора фракций оппонента
@@ -188,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
         appState.opponentSelectedFactions = data.selectedFactions;
         // Убираем блокировку выбора при получении выбора оппонента
         // appState.factionSelectionsLocked = true; - удаляем эту строку
-        throttledRenderApp();
+        renderApp();
       }
     });
     
@@ -206,7 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
         alert('Время на бан истекло. Выбор сделан автоматически.');
       }
       appState.currentPage = 'match-results';
-      throttledRenderApp();
+      renderApp();
     });
     
     // Истечение таймера бана
@@ -236,7 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
         
-        throttledRenderApp();
+        renderApp();
       }
     });
     
@@ -245,16 +238,6 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('Ошибка подключения к серверу:', error);
       alert('Ошибка подключения к серверу. Пожалуйста, проверьте подключение к интернету.');
     });
-  }
-
-  // Оптимизированная функция рендеринга
-  function throttledRenderApp() {
-    if (appState.throttleTimer) return;
-    
-    appState.throttleTimer = setTimeout(() => {
-      renderApp();
-      appState.throttleTimer = null;
-    }, 50); // Минимальный интервал между обновлениями 50 мс
   }
 
   // Функции для работы с API
@@ -293,98 +276,58 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       
       appState.currentPage = 'lobby';
-      throttledRenderApp();
+      renderApp();
     } catch (error) {
       console.error('Ошибка создания лобби:', error);
       alert(`Ошибка: ${error.message}`);
     }
   }
   
-  // Заменить функцию joinLobby в app.js (примерно строка 320)
-async function joinLobby() {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/lobbies/${appState.lobbyCode}/join`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
+  // Присоединение к существующему лобби
+  async function joinLobby(asSpectator = false) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/lobbies/${appState.lobbyCode}/join`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          playerId: appState.playerId,
+          playerName: appState.playerName,
+          isSpectator: false // Всегда false, игнорируем параметр asSpectator
+        })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Ошибка присоединения к лобби');
+      }
+      
+      const lobby = await response.json();
+      
+      // Правильная обработка данных лобби
+      if (lobby.creator && lobby.creator.id === appState.playerId) {
+        appState.isCreator = true;
+        appState.opponent = lobby.opponent || null;
+      } else if (lobby.opponent && lobby.opponent.id === appState.playerId) {
+        appState.isCreator = false;
+        appState.opponent = lobby.creator;
+      }
+      
+      // Присоединяемся к комнате через Socket.IO
+      socket.emit('join-lobby', {
+        lobbyCode: appState.lobbyCode,
         playerId: appState.playerId,
         playerName: appState.playerName
-      })
-    });
-    
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Ошибка присоединения к лобби');
-    }
-    
-    const lobby = await response.json();
-    
-    // Правильная обработка данных лобби
-    if (lobby.creator && lobby.creator.id === appState.playerId) {
-      appState.isCreator = true;
-      appState.opponent = lobby.opponent || null;
-    } else if (lobby.opponent && lobby.opponent.id === appState.playerId) {
-      appState.isCreator = false;
-      appState.opponent = lobby.creator;
-    }
-    
-    // Присоединяемся к комнате через Socket.IO
-    socket.emit('join-lobby', {
-      lobbyCode: appState.lobbyCode,
-      playerId: appState.playerId,
-      playerName: appState.playerName
-    });
-    
-    appState.currentPage = 'lobby';
-    throttledRenderApp();
-  } catch (error) {
-    console.error('Ошибка присоединения к лобби:', error);
-    alert(`Ошибка: ${error.message}`);
-  }
-}
-
-// Также нужно заменить функцию renderJoinLobby чтобы удалить кнопку для зрителей
-function renderJoinLobby(container) {
-  container.innerHTML = `
-    <div class="gwent-app">
-      <div class="gwent-header">
-        <button id="back-btn" class="gwent-back-btn">← Назад</button>
-        <h1>Присоединение к лобби</h1>
-      </div>
+      });
       
-      <div class="gwent-content">
-        <div class="lobby-join-form">
-          <label for="lobby-code">Введите код лобби:</label>
-          <input type="text" id="lobby-code" placeholder="Например: GWENT123">
-        </div>
-        
-        <div class="gwent-buttons">
-          <button id="join-lobby-confirm-btn" class="gwent-btn">Присоединиться к игре</button>
-        </div>
-      </div>
-    </div>
-  `;
-
-  // Обработчики событий
-  document.getElementById('back-btn').addEventListener('click', () => {
-    appState.currentPage = 'home';
-    throttledRenderApp();
-  });
-
-  document.getElementById('join-lobby-confirm-btn').addEventListener('click', () => {
-    const lobbyCode = document.getElementById('lobby-code').value.trim().toUpperCase();
-    
-    if (!lobbyCode) {
-      alert('Пожалуйста, введите код лобби');
-      return;
+      appState.currentPage = 'lobby';
+      renderApp();
+    } catch (error) {
+      console.error('Ошибка присоединения к лобби:', error);
+      alert(`Ошибка: ${error.message}`);
     }
-    
-    appState.lobbyCode = lobbyCode;
-    joinLobby();
-  });
-}
+  }
   
   // Получение информации о лобби
   async function getLobbyInfo(lobbyCode) {
@@ -563,7 +506,7 @@ function renderJoinLobby(container) {
       }
       appState.isCreator = true;
       appState.currentPage = 'create-lobby';
-      throttledRenderApp();
+      renderApp();
     });
 
     document.getElementById('join-lobby-btn').addEventListener('click', () => {
@@ -573,7 +516,7 @@ function renderJoinLobby(container) {
       }
       appState.isCreator = false;
       appState.currentPage = 'join-lobby';
-      throttledRenderApp();
+      renderApp();
     });
 
     // Инициализация проигрывания музыки
@@ -646,7 +589,7 @@ function renderJoinLobby(container) {
     // Обработчики событий
     document.getElementById('back-btn').addEventListener('click', () => {
       appState.currentPage = 'home';
-      throttledRenderApp();
+      renderApp();
     });
 
     document.getElementById('tournament-format').addEventListener('change', (e) => {
@@ -676,7 +619,6 @@ function renderJoinLobby(container) {
           
           <div class="gwent-buttons">
             <button id="join-lobby-confirm-btn" class="gwent-btn">Присоединиться к игре</button>
-            <!-- Удалена кнопка для зрителей -->
           </div>
         </div>
       </div>
@@ -685,7 +627,7 @@ function renderJoinLobby(container) {
     // Обработчики событий
     document.getElementById('back-btn').addEventListener('click', () => {
       appState.currentPage = 'home';
-      throttledRenderApp();
+      renderApp();
     });
 
     document.getElementById('join-lobby-confirm-btn').addEventListener('click', () => {
@@ -697,7 +639,7 @@ function renderJoinLobby(container) {
       }
       
       appState.lobbyCode = lobbyCode;
-      joinLobby(false); // Всегда присоединяемся как игрок
+      joinLobby(false);
     });
   }
 
@@ -718,6 +660,7 @@ function renderJoinLobby(container) {
               <h2>Ожидание подключения противника...</h2>
               <p>Код вашего лобби: <strong>${appState.lobbyCode}</strong></p>
               <p>Поделитесь этим кодом с другим игроком, чтобы он мог присоединиться.</p>
+              <p>Для этого сверните это окно, не волнуйтесь, это не прекратит работу вашего лобби</p>
             </div>
           ` : `
             <div class="lobby-players">
@@ -797,6 +740,7 @@ function renderJoinLobby(container) {
         // Останавливаем всплытие события
         e.stopPropagation();
         
+        // Если подтверждение уже отправлено или карточка отключена,
         // Если подтверждение уже отправлено или карточка отключена, ничего не делаем
         if (appState.selectionConfirmed || card.hasAttribute('disabled')) {
           return;
@@ -1061,7 +1005,7 @@ function renderJoinLobby(container) {
     
     document.getElementById('return-home-btn').addEventListener('click', () => {
       appState.currentPage = 'home';
-      throttledRenderApp();
+      renderApp();
     });
   }
 
@@ -1148,22 +1092,7 @@ function renderJoinLobby(container) {
     }
   }
 
-  // Проверка производительности устройства
-  function checkDevicePerformance() {
-    // Простая проверка производительности
-    const start = performance.now();
-    for (let i = 0; i < 1000; i++) {
-      Math.sqrt(i);
-    }
-    const end = performance.now();
-    
-    // Если устройство медленное, отключаем сложные анимации
-    if (end - start > 10) {
-      document.body.classList.add('low-performance-device');
-    }
-  }
-
-  // Добавляем стили для улучшения визуального эффекта при наведении и выборе фракций
+  // Добавим дополнительные стили для улучшения визуального эффекта при наведении и выборе фракций
   function addCustomStyles() {
     // Проверяем, существует ли уже элемент стиля
     let customStyle = document.getElementById('gwent-custom-styles');
@@ -1227,17 +1156,6 @@ function renderJoinLobby(container) {
         100% { background-position: 300px 300px, -300px 300px, 300px -300px, -300px -300px; }
       }
       
-      /* Отключение анимаций на слабых устройствах */
-      .low-performance-device .particles-effect,
-      .low-performance-device .smoke-effect {
-        display: none !important;
-      }
-      
-      .low-performance-device .faction-card:hover {
-        transform: none !important;
-        box-shadow: 0 0 5px rgba(0, 255, 200, 0.7) !important;
-      }
-      
       /* Убедимся, что контент поверх анимаций */
       .gwent-content, .gwent-header {
         position: relative;
@@ -1250,59 +1168,7 @@ function renderJoinLobby(container) {
         backdrop-filter: blur(1px);
       }
       
-      /* Исправление для заголовка и кнопки "Назад" */
-      .gwent-header {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        position: relative;
-        padding: 15px 50px;
-      }
-      
-      .gwent-back-btn {
-        position: absolute;
-        left: 10px;
-        top: 50%;
-        transform: translateY(-50%);
-        background: none;
-        border: none;
-        color: #f4d03f;
-        font-size: 1.2rem;
-        cursor: pointer;
-        z-index: 5;
-        padding: 8px;
-      }
-      
-      /* Исправление стилей для названий фракций */
-      .faction-name {
-        padding: 10px;
-        text-align: center;
-        background-color: rgba(0, 0, 0, 0.7);
-        font-weight: bold;
-        font-size: 0.9rem;
-        height: 40px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        word-break: break-word;
-        overflow: hidden;
-      }
-      
-      /* Стили для карточек фракций */
-      .faction-card {
-        width: 100%;
-        height: 220px;
-        display: flex;
-        flex-direction: column;
-        position: relative;
-        background-color: rgba(0, 0, 0, 0.5);
-        border: 2px solid #555;
-        border-radius: 5px;
-        overflow: hidden;
-        transition: all 0.3s ease;
-        cursor: pointer;
-      }
-      
+      /* Стили для карточек фракций при наведении */
       .faction-card:hover {
         transform: scale(1.07);
         box-shadow: 0 0 15px rgba(0, 255, 200, 0.7);
@@ -1326,19 +1192,18 @@ function renderJoinLobby(container) {
         box-shadow: none;
       }
       
-      /* Стили для изображений фракций */
-      .faction-image {
-        flex: 1;
-        min-height: 180px;
-        background-size: contain;
-        background-repeat: no-repeat;
-        background-position: center;
-      }
-      
       /* Предотвращение перекрытия соседних элементов */
       .factions-grid {
         gap: 15px;
         margin: 10px 0;
+      }
+      
+      /* Стили для изображений на всех экранах */
+      .faction-image {
+        height: 180px;
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center;
       }
       
       /* Стили для сетки фракций на стадии выбора */
@@ -1373,95 +1238,13 @@ function renderJoinLobby(container) {
         transform: scale(1.05);
         box-shadow: 0 0 15px rgba(231, 76, 60, 0.7);
       }
-      
-      /* Адаптация для мобильных устройств */
-      @media (max-width: 768px) {
-        /* Увеличиваем размер кнопок для мобильных */
-        .gwent-btn {
-          padding: 16px;
-          font-size: 16px;
-          min-height: 50px;
-        }
-        
-        /* Адаптация сетки фракций */
-        .factions-grid {
-          grid-template-columns: repeat(2, 1fr) !important;
-          grid-template-rows: repeat(3, auto) !important;
-          gap: 10px !important;
-        }
-        
-        /* Сжимаем заголовки */
-        .gwent-header h1 {
-          font-size: 1.1rem;
-          max-width: 70%;
-          text-align: center;
-        }
-        
-        .gwent-back-btn {
-          font-size: 1rem;
-          padding: 10px;
-        }
-        
-        /* Адаптируем диалоги */
-        .gwent-dialog-content {
-          width: 90%;
-          max-width: 300px;
-          padding: 15px;
-        }
-        
-        /* Адаптируем экран результатов */
-        .match-info {
-          flex-direction: column;
-        }
-        
-        .player-results, .opponent-results {
-          width: 100%;
-          margin-bottom: 20px;
-        }
-      }
-      
-      /* Адаптация для маленьких экранов (телефоны) */
-      @media (max-width: 480px) {
-        .faction-name {
-          font-size: 0.8rem;
-          padding: 5px;
-        }
-        
-        .gwent-content {
-          padding: 10px;
-        }
-        
-        .player-form input, 
-        .lobby-join-form input, 
-        .format-selector select {
-          font-size: 16px;
-        }
-        
-        /* Исправление для Safari */
-        .gwent-app {
-          -webkit-background-size: auto 100%;
-          background-attachment: scroll !important;
-        }
-      }
     `;
   }
 
   // Начальный рендеринг приложения и добавление стилей
-  checkDevicePerformance(); // Проверяем производительность устройства
   renderApp();
   addCustomStyles();
   createVisualEffects();
-
-  // Обработка фокуса на полях ввода для мобильной клавиатуры
-  document.addEventListener('focus', (e) => {
-    const target = e.target;
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-      // Прокручиваем страницу, чтобы элемент был виден
-      setTimeout(() => {
-        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 300);
-    }
-  }, true);
 
   // Экспорт функций и состояния в глобальную область для отладки
   window.appState = appState;

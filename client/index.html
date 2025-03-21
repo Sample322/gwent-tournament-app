@@ -5,75 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Турнир по Гвинту</title>
     <link rel="stylesheet" href="styles.css">
-    <style>
-        /* Резервные стили на случай, если основной CSS не загрузится */
-        body {
-            background-color: #1a1a1a;
-            color: #e0e0e0;
-            font-family: 'Roboto', Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-        }
-        
-        #app {
-            min-height: 100vh;
-        }
-        
-        .gwent-header {
-            background-color: rgba(0, 0, 0, 0.8);
-            padding: 15px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            position: relative;
-        }
-        
-        .gwent-header h1 {
-            color: #f4d03f;
-            text-align: center;
-            font-size: 1.5rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        .gwent-content {
-            padding: 20px;
-        }
-        
-        .gwent-btn {
-            padding: 15px;
-            background-color: #f4d03f;
-            color: #333;
-            border: none;
-            border-radius: 4px;
-            font-weight: bold;
-            margin: 5px 0;
-            width: 100%;
-            max-width: 400px;
-            cursor: pointer;
-        }
-        
-        input[type="text"] {
-            padding: 10px;
-            width: 100%;
-            max-width: 400px;
-            margin-bottom: 15px;
-            background-color: rgba(255, 255, 255, 0.1);
-            border: 1px solid #f4d03f;
-            color: white;
-        }
-    </style>
+    <!-- Подключение Telegram Mini Apps SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Подключение Socket.IO клиента -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 </head>
 <body>
-    <div id="app"></div>
-    
-    <!-- Подключение Telegram Web App API -->
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    
-    <!-- Подключение Socket.IO -->
-    <script src="/socket.io/socket.io.js"></script>
-    
-    <!-- Ваш скрипт приложения -->
+    <div id="app">
+        <!-- Контент будет динамически рендериться через JavaScript -->
+    </div>
+    <!-- Важно: имя файла должно совпадать с тем, что указано в HTML -->
     <script src="app.js"></script>
 </body>
 </html>
