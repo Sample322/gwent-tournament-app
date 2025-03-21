@@ -4,6 +4,18 @@ const Match = require('../models/Match');
 module.exports = (io) => {
   // Отслеживаем комнаты для таймеров банов
   const banTimers = {};
+  // Отслеживаем подключения игроков
+  const playerConnections = new Map();
+  
+  // Функция очистки ресурсов
+  function cleanupResources(lobbyCode) {
+    // Очистка таймеров при удалении лобби
+    if (banTimers[lobbyCode]) {
+      clearTimeout(banTimers[lobbyCode]);
+      delete banTimers[lobbyCode];
+      console.log(`Ресурсы лобби ${lobbyCode} очищены`);
+    }
+  }
   
   io.on('connection', (socket) => {
     console.log('Новое подключение:', socket.id);
@@ -13,16 +25,27 @@ module.exports = (io) => {
       socket.join(lobbyCode);
       console.log(`Игрок ${playerId} (${playerName}) присоединился к лобби ${lobbyCode}`);
       
+      // Сохраняем информацию о соединении игрока
+      playerConnections.set(socket.id, { lobbyCode, playerId });
+      
       // Обновление лобби в базе данных
-      const lobby = await Lobby.findOne({ lobbyCode });
-      if (lobby) {
-        // Оповещение всех в лобби о новом игроке
-        io.to(lobbyCode).emit('player-joined', { 
-          playerId, 
-          playerName, 
-          isCreator: lobby.creator.id === playerId 
-        });
-        io.to(lobbyCode).emit('lobby-update', lobby);
+      try {
+        const lobby = await Lobby.findOne({ lobbyCode });
+        if (lobby) {
+          // Обновляем lastActivity
+          lobby.lastActivity = new Date();
+          await lobby.save();
+          
+          // Оповещение всех в лобби о новом игроке
+          io.to(lobbyCode).emit('player-joined', { 
+            playerId, 
+            playerName, 
+            isCreator: lobby.creator.id === playerId 
+          });
+          io.to(lobbyCode).emit('lobby-update', lobby);
+        }
+      } catch (error) {
+        console.error('Ошибка при присоединении к лобби:', error);
       }
     });
     
@@ -33,6 +56,7 @@ module.exports = (io) => {
         if (!lobby) return;
         
         lobby.status = 'selecting-factions';
+        lobby.lastActivity = new Date(); // Обновление времени активности
         await lobby.save();
         
         io.to(lobbyCode).emit('faction-selection-started', { lobbyCode });
@@ -46,6 +70,9 @@ module.exports = (io) => {
     socket.on('player-selection-status', ({ lobbyCode, playerId, status, phase }) => {
       // Передаем статус всем в лобби
       socket.to(lobbyCode).emit('player-selection-status', { playerId, status, phase });
+      
+      // Обновляем время активности лобби
+      updateLobbyActivity(lobbyCode);
     });
     
     // Подтверждение выбора фракций
@@ -63,6 +90,9 @@ module.exports = (io) => {
           lobby.opponentSelectedFactions = selectedFactions;
         }
         
+        // Обновляем время активности
+        lobby.lastActivity = new Date();
+        
         // Отправляем информацию о выборе всем в лобби
         socket.to(lobbyCode).emit('opponent-factions-selected', { 
           playerId, 
@@ -70,40 +100,53 @@ module.exports = (io) => {
         });
         
         // Если обе стороны выбрали фракции, переходим к фазе банов
-        if (lobby.creatorSelectedFactions.length === 3 && lobby.opponentSelectedFactions.length === 3) {
+        if (lobby.creatorSelectedFactions.length > 0 && 
+            lobby.opponentSelectedFactions.length > 0 && 
+            lobby.creatorSelectedFactions.length === lobby.opponentSelectedFactions.length) {
           lobby.status = 'banning';
           
           // Запускаем таймер бана (3 минуты)
+          if (banTimers[lobbyCode]) {
+            clearTimeout(banTimers[lobbyCode]);
+          }
+          
           banTimers[lobbyCode] = setTimeout(async () => {
-            // Если время истекло, выбираем случайные баны
-            const updatedLobby = await Lobby.findOne({ lobbyCode });
-            
-            if (updatedLobby && updatedLobby.status === 'banning') {
-              if (!updatedLobby.creatorBannedFaction) {
-                updatedLobby.creatorBannedFaction = updatedLobby.opponentSelectedFactions[Math.floor(Math.random() * 3)];
+            try {
+              // Если время истекло, выбираем случайные баны
+              const updatedLobby = await Lobby.findOne({ lobbyCode });
+              
+              if (updatedLobby && updatedLobby.status === 'banning') {
+                if (!updatedLobby.creatorBannedFaction) {
+                  updatedLobby.creatorBannedFaction = updatedLobby.opponentSelectedFactions[Math.floor(Math.random() * updatedLobby.opponentSelectedFactions.length)];
+                }
+                
+                if (!updatedLobby.opponentBannedFaction) {
+                  updatedLobby.opponentBannedFaction = updatedLobby.creatorSelectedFactions[Math.floor(Math.random() * updatedLobby.creatorSelectedFactions.length)];
+                }
+                
+                // Рассчитываем оставшиеся фракции
+                updatedLobby.creatorRemainingFactions = updatedLobby.creatorSelectedFactions.filter(
+                  faction => faction !== updatedLobby.opponentBannedFaction
+                );
+                
+                updatedLobby.opponentRemainingFactions = updatedLobby.opponentSelectedFactions.filter(
+                  faction => faction !== updatedLobby.creatorBannedFaction
+                );
+                
+                updatedLobby.status = 'match-results';
+                updatedLobby.lastActivity = new Date(); // Обновление времени активности
+                
+                await updatedLobby.save();
+                
+                io.to(lobbyCode).emit('ban-timer-expired');
+                io.to(lobbyCode).emit('lobby-update', updatedLobby);
               }
               
-              if (!updatedLobby.opponentBannedFaction) {
-                updatedLobby.opponentBannedFaction = updatedLobby.creatorSelectedFactions[Math.floor(Math.random() * 3)];
-              }
-              
-              // Рассчитываем оставшиеся фракции
-              updatedLobby.creatorRemainingFactions = updatedLobby.creatorSelectedFactions.filter(
-                faction => faction !== updatedLobby.opponentBannedFaction
-              );
-              
-              updatedLobby.opponentRemainingFactions = updatedLobby.opponentSelectedFactions.filter(
-                faction => faction !== updatedLobby.creatorBannedFaction
-              );
-              
-              updatedLobby.status = 'match-results';
-              await updatedLobby.save();
-              
-              io.to(lobbyCode).emit('ban-timer-expired');
-              io.to(lobbyCode).emit('lobby-update', updatedLobby);
+              delete banTimers[lobbyCode];
+            } catch (error) {
+              console.error('Ошибка в обработке таймера бана:', error);
+              delete banTimers[lobbyCode];
             }
-            
-            delete banTimers[lobbyCode];
           }, 180000); // 3 минуты
         }
         
@@ -128,6 +171,9 @@ module.exports = (io) => {
         } else {
           lobby.opponentBannedFaction = bannedFaction;
         }
+        
+        // Обновляем время активности
+        lobby.lastActivity = new Date();
         
         // Отправляем информацию о бане всем в лобби
         socket.to(lobbyCode).emit('opponent-faction-banned', { 
@@ -198,6 +244,7 @@ module.exports = (io) => {
         lobby.creatorRemainingFactions = [];
         lobby.opponentRemainingFactions = [];
         lobby.status = 'waiting';
+        lobby.lastActivity = new Date(); // Обновление времени активности
         
         await lobby.save();
         io.to(lobbyCode).emit('lobby-update', lobby);
@@ -209,6 +256,34 @@ module.exports = (io) => {
     // Отключение от сервера
     socket.on('disconnect', () => {
       console.log('Отключение:', socket.id);
+      
+      // Очистка ресурсов и ссылок
+      if (playerConnections.has(socket.id)) {
+        const { lobbyCode } = playerConnections.get(socket.id);
+        playerConnections.delete(socket.id);
+        
+        // Проверяем, остались ли игроки в лобби
+        io.in(lobbyCode).allSockets().then(clients => {
+          if (clients.size === 0) {
+            console.log(`Последний игрок покинул лобби ${lobbyCode}, очистка ресурсов`);
+            cleanupResources(lobbyCode);
+          }
+        }).catch(err => {
+          console.error('Ошибка при проверке активных клиентов:', err);
+        });
+      }
     });
   });
+  
+  // Вспомогательная функция для обновления времени последней активности лобби
+  async function updateLobbyActivity(lobbyCode) {
+    try {
+      await Lobby.updateOne(
+        { lobbyCode },
+        { $set: { lastActivity: new Date() } }
+      );
+    } catch (error) {
+      console.error('Ошибка обновления времени активности лобби:', error);
+    }
+  }
 };
