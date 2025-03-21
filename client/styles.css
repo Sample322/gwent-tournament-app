@@ -24,11 +24,12 @@ body {
 
 .gwent-header {
   background-color: rgba(0, 0, 0, 0.8);
-  padding: 15px 50px; /* Увеличили боковые отступы для кнопки назад */
+  padding: 15px 50px; /* Увеличенные боковые отступы */
   display: flex;
   justify-content: center;
   align-items: center;
   position: relative;
+  min-height: 60px; /* Гарантируем минимальную высоту */
 }
 
 .gwent-header h1 {
@@ -37,6 +38,11 @@ body {
   font-size: 1.5rem;
   text-transform: uppercase;
   letter-spacing: 1px;
+  width: calc(100% - 100px); /* Ограничиваем ширину, чтобы освободить место для кнопки */
+  margin: 0 auto; /* Центрируем заголовок */
+  overflow: hidden; /* Для текста, который может не поместиться */
+  text-overflow: ellipsis; /* Добавляем многоточие при переполнении */
+  white-space: nowrap; /* Запрещаем перенос строк */
 }
 
 .lobby-code-display {
@@ -59,6 +65,12 @@ body {
   font-size: 1.2rem;
   cursor: pointer;
   z-index: 5; /* Убедимся, что кнопка над другими элементами */
+  padding: 5px 10px;
+  min-width: 40px; /* Гарантируем минимальную ширину */
+  min-height: 40px; /* Гарантируем минимальную высоту */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .gwent-logo {
@@ -686,4 +698,55 @@ body {
 .format-desc {
   font-size: 0.9rem;
   color: #ddd;
+}
+
+/* Медиа-запрос для очень маленьких экранов */
+@media screen and (max-width: 360px) {
+  .gwent-header {
+    padding: 15px 40px;
+  }
+  
+  .gwent-header h1 {
+    font-size: 1.2rem;
+  }
+  
+  .gwent-back-btn {
+    font-size: 1rem;
+    left: 5px;
+  }
+}
+
+/* Улучшаем стили для мобильных устройств */
+@media screen and (max-width: 480px) {
+  .gwent-content {
+    padding: 15px 10px;
+  }
+  
+  .faction-name {
+    font-size: 12px;
+  }
+  
+  .faction-card {
+    min-height: 160px;
+  }
+  
+  .faction-image {
+    height: 120px;
+  }
+}
+
+/* Стили для улучшения видимости на маленьких экранах десктопных приложений */
+@media screen and (max-height: 600px) and (min-width: 768px) {
+  .gwent-header {
+    padding: 10px 60px;
+    min-height: 50px;
+  }
+  
+  .faction-image {
+    height: 120px;
+  }
+  
+  .faction-card {
+    min-height: 160px;
+  }
 }
