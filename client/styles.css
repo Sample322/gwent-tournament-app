@@ -29,22 +29,27 @@ body {
   align-items: center;
   position: relative;
   min-height: 60px;
-  /* Добавляем отступы сверху и снизу, но не по бокам */
   padding: 15px 0;
 }
 
 .gwent-header h1 {
   color: #f4d03f;
   text-align: center;
-  font-size: 1.4rem; /* Немного уменьшаем размер */
+  font-size: 1.4rem;
   text-transform: uppercase;
   letter-spacing: 1px;
-  /* Центрируем заголовок и оставляем место для кнопки */
-  margin: 0 auto; 
-  /* Резервируем 45px слева для кнопки назад */
-  margin-left: 45px; 
-  /* Позволяем сжиматься при необходимости */
-  max-width: calc(100% - 50px);
+  margin: 0 auto;
+  /* Создаем смещение заголовка относительно кнопки назад */
+  transform: translateX(15px);
+  /* Делаем заголовок достаточно узким, чтобы он не выходил за пределы при центрировании */
+  max-width: calc(100% - 80px);
+}
+
+/* Специальные стили для заголовков на экранах создания и присоединения к лобби */
+.gwent-app .gwent-header h1.create-lobby-title,
+.gwent-app .gwent-header h1.join-lobby-title {
+  font-size: 1.3rem;
+  transform: translateX(20px);
 }
 
 .lobby-code-display {
@@ -68,7 +73,6 @@ body {
   cursor: pointer;
   z-index: 5;
   padding: 5px;
-  /* Фиксируем размер кнопки */
   width: 40px;
   height: 40px;
   display: flex;
@@ -732,7 +736,13 @@ body {
   
   /* Дополнительное пространство для заголовка */
   .gwent-header h1 {
-    margin-left: 50px;
+    transform: translateX(20px);
+  }
+  
+  /* Дополнительное смещение для заголовков на страницах создания/присоединения к лобби */
+  .gwent-app .gwent-header h1.create-lobby-title,
+  .gwent-app .gwent-header h1.join-lobby-title {
+    transform: translateX(25px);
   }
 }
 
@@ -740,7 +750,13 @@ body {
 @media screen and (max-width: 480px) {
   .gwent-header h1 {
     font-size: 1.3rem;
-    margin-left: 40px;
+    transform: translateX(15px);
+  }
+  
+  .gwent-app .gwent-header h1.create-lobby-title,
+  .gwent-app .gwent-header h1.join-lobby-title {
+    font-size: 1.2rem;
+    transform: translateX(18px);
   }
   
   .gwent-back-btn {
@@ -768,7 +784,13 @@ body {
 @media screen and (max-width: 350px) {
   .gwent-header h1 {
     font-size: 1.1rem;
-    margin-left: 35px;
+    transform: translateX(12px);
+  }
+  
+  .gwent-app .gwent-header h1.create-lobby-title,
+  .gwent-app .gwent-header h1.join-lobby-title {
+    font-size: 1rem;
+    transform: translateX(15px);
   }
   
   .gwent-back-btn {

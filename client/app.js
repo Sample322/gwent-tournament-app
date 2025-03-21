@@ -563,13 +563,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Рендеринг страницы создания лобби
   function renderCreateLobby(container) {
     container.innerHTML = `
       <div class="gwent-app">
         <div class="gwent-header">
           <button id="back-btn" class="gwent-back-btn">← Назад</button>
-          <h1>Создание лобби</h1>
+          <h1 class="create-lobby-title">Создание лобби</h1>
         </div>
         
         <div class="gwent-content">
@@ -585,63 +584,63 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       </div>
     `;
-
+  
     // Обработчики событий
     document.getElementById('back-btn').addEventListener('click', () => {
       appState.currentPage = 'home';
       renderApp();
     });
-
+  
     document.getElementById('tournament-format').addEventListener('change', (e) => {
       appState.tournamentFormat = e.target.value;
       appState.maxRounds = formatConfig[appState.tournamentFormat].maxRounds;
     });
-
+  
     document.getElementById('start-lobby-btn').addEventListener('click', () => {
       createLobby();
     });
   }
 
   // Рендеринг страницы присоединения к лобби
-  function renderJoinLobby(container) {
-    container.innerHTML = `
-      <div class="gwent-app">
-        <div class="gwent-header">
-          <button id="back-btn" class="gwent-back-btn">← Назад</button>
-          <h1>Присоединение к лобби</h1>
+function renderJoinLobby(container) {
+  container.innerHTML = `
+    <div class="gwent-app">
+      <div class="gwent-header">
+        <button id="back-btn" class="gwent-back-btn">← Назад</button>
+        <h1 class="join-lobby-title">Присоединение к лобби</h1>
+      </div>
+      
+      <div class="gwent-content">
+        <div class="lobby-join-form">
+          <label for="lobby-code">Введите код лобби:</label>
+          <input type="text" id="lobby-code" placeholder="Например: GWENT123">
         </div>
         
-        <div class="gwent-content">
-          <div class="lobby-join-form">
-            <label for="lobby-code">Введите код лобби:</label>
-            <input type="text" id="lobby-code" placeholder="Например: GWENT123">
-          </div>
-          
-          <div class="gwent-buttons">
-            <button id="join-lobby-confirm-btn" class="gwent-btn">Присоединиться к игре</button>
-          </div>
+        <div class="gwent-buttons">
+          <button id="join-lobby-confirm-btn" class="gwent-btn">Присоединиться к игре</button>
         </div>
       </div>
-    `;
+    </div>
+  `;
 
-    // Обработчики событий
-    document.getElementById('back-btn').addEventListener('click', () => {
-      appState.currentPage = 'home';
-      renderApp();
-    });
+  // Обработчики событий
+  document.getElementById('back-btn').addEventListener('click', () => {
+    appState.currentPage = 'home';
+    renderApp();
+  });
 
-    document.getElementById('join-lobby-confirm-btn').addEventListener('click', () => {
-      const lobbyCode = document.getElementById('lobby-code').value.trim().toUpperCase();
-      
-      if (!lobbyCode) {
-        alert('Пожалуйста, введите код лобби');
-        return;
-      }
-      
-      appState.lobbyCode = lobbyCode;
-      joinLobby(false);
-    });
-  }
+  document.getElementById('join-lobby-confirm-btn').addEventListener('click', () => {
+    const lobbyCode = document.getElementById('lobby-code').value.trim().toUpperCase();
+    
+    if (!lobbyCode) {
+      alert('Пожалуйста, введите код лобби');
+      return;
+    }
+    
+    appState.lobbyCode = lobbyCode;
+    joinLobby(false);
+  });
+}
 
   // Рендеринг страницы лобби
   function renderLobby(container) {
