@@ -24,21 +24,27 @@ body {
 
 .gwent-header {
   background-color: rgba(0, 0, 0, 0.8);
-  padding: 15px;
   display: flex;
   justify-content: center;
   align-items: center;
   position: relative;
   min-height: 60px;
+  /* Добавляем отступы сверху и снизу, но не по бокам */
+  padding: 15px 0;
 }
 
 .gwent-header h1 {
   color: #f4d03f;
   text-align: center;
-  font-size: 1.5rem;
+  font-size: 1.4rem; /* Немного уменьшаем размер */
   text-transform: uppercase;
   letter-spacing: 1px;
-  padding: 0 40px; /* Добавляем отступы для места кнопки, вместо ограничения ширины */
+  /* Центрируем заголовок и оставляем место для кнопки */
+  margin: 0 auto; 
+  /* Резервируем 45px слева для кнопки назад */
+  margin-left: 45px; 
+  /* Позволяем сжиматься при необходимости */
+  max-width: calc(100% - 50px);
 }
 
 .lobby-code-display {
@@ -61,12 +67,13 @@ body {
   font-size: 1.2rem;
   cursor: pointer;
   z-index: 5;
-  min-width: 40px;
-  min-height: 40px;
+  padding: 5px;
+  /* Фиксируем размер кнопки */
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 5px;
 }
 
 .gwent-logo {
@@ -696,43 +703,6 @@ body {
   color: #ddd;
 }
 
-/* Медиа-запросы для адаптации */
-@media screen and (max-width: 360px) {
-  .gwent-header h1 {
-    font-size: 1.2rem;
-    padding: 0 35px;
-  }
-  
-  .gwent-back-btn {
-    font-size: 1rem;
-    left: 5px;
-  }
-  
-  .faction-name {
-    font-size: 12px;
-  }
-}
-
-/* Дополнительные стили для специфических экранов */
-@media screen and (max-width: 420px) {
-  .select-factions .factions-grid {
-    grid-template-columns: repeat(2, 1fr);
-    grid-template-rows: repeat(3, auto);
-  }
-}
-
-/* Для очень маленьких экранов */
-@media screen and (max-width: 320px) {
-  .gwent-header h1 {
-    font-size: 1rem;
-    padding: 0 30px;
-  }
-  
-  .gwent-content {
-    padding: 10px 5px;
-  }
-}
-
 /* Стили для улучшения видимости на маленьких экранах десктопных приложений */
 @media screen and (max-height: 600px) and (min-width: 768px) {
   .gwent-header {
@@ -745,6 +715,75 @@ body {
   
   .faction-image {
     height: 120px;
+  }
+}
+
+/* Специальный стиль для десктопных приложений */
+@media screen and (min-width: 481px) {
+  /* Для десктопного Telegram рекомендуется минимальная ширина */
+  body {
+    min-width: 380px;
+  }
+  
+  /* Увеличиваем горизонтальные отступы на больших экранах */
+  .gwent-content {
+    padding: 20px 30px;
+  }
+  
+  /* Дополнительное пространство для заголовка */
+  .gwent-header h1 {
+    margin-left: 50px;
+  }
+}
+
+/* Медиа-запрос для мобильных устройств */
+@media screen and (max-width: 480px) {
+  .gwent-header h1 {
+    font-size: 1.3rem;
+    margin-left: 40px;
+  }
+  
+  .gwent-back-btn {
+    width: 35px;
+    height: 35px;
+  }
+  
+  .faction-name {
+    font-size: 12px;
+    height: 34px;
+  }
+  
+  /* Оптимизация сетки фракций для мобильных устройств */
+  .select-factions .factions-grid {
+    grid-template-columns: repeat(2, 1fr);
+    grid-gap: 10px;
+  }
+  
+  .faction-image {
+    height: 120px;
+  }
+}
+
+/* Для очень маленьких экранов */
+@media screen and (max-width: 350px) {
+  .gwent-header h1 {
+    font-size: 1.1rem;
+    margin-left: 35px;
+  }
+  
+  .gwent-back-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 1rem;
+  }
+  
+  .gwent-content {
+    padding: 15px 10px;
+  }
+  
+  .faction-name {
+    font-size: 11px;
+    height: 32px;
   }
 }
 
