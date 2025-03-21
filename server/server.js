@@ -60,16 +60,15 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../client/index.html'));
 });
 
-// Подключение к MongoDB с оптимизированными настройками
+// Подключение к MongoDB с обновленными настройками
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-  // Добавленные параметры для надежного соединения
+  // Обновленные параметры для надежного соединения
   serverSelectionTimeoutMS: 5000, // Таймаут выбора сервера
   socketTimeoutMS: 45000, // Увеличенный таймаут сокета
   maxPoolSize: 10, // Ограничение пула соединений
-  keepAlive: true, // Поддержание соединения активным
-  keepAliveInitialDelay: 300000 // 5 минут
+  // Удаляем устаревшие опции keepAlive и keepAliveInitialDelay
 })
 .then(() => console.log('MongoDB подключено'))
 .catch(err => console.error('Ошибка подключения к MongoDB:', err));
