@@ -52,26 +52,14 @@ const LobbySchema = new mongoose.Schema({
     enum: ['waiting', 'selecting-factions', 'banning', 'match-results'],
     default: 'waiting'
   },
-  lastActivity: {
-    type: Date,
-    default: Date.now
-  },
   createdAt: {
     type: Date,
     default: Date.now,
-    expires: 7200 // Автоматическое удаление лобби через 2 часа (более оптимально)
+    expires: 7200 // Автоматическое удаление лобби через 2 часа вместо 24 часов (86400)
   }
 });
 
-// Добавляем индексы для оптимизации запросов
+// Добавляем индекс для быстрого поиска
 LobbySchema.index({ lobbyCode: 1 }, { unique: true });
-LobbySchema.index({ createdAt: 1 });
-LobbySchema.index({ lastActivity: 1 });
-
-// Обновление времени последней активности перед сохранением
-LobbySchema.pre('save', function(next) {
-  this.lastActivity = new Date();
-  next();
-});
 
 module.exports = mongoose.model('Lobby', LobbySchema);

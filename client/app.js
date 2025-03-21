@@ -10,11 +10,27 @@ document.addEventListener('DOMContentLoaded', () => {
   WebApp.ready();
   WebApp.expand();
 
-  // Инициализация Socket.IO
-  socket = io(API_BASE_URL);
-  
-  // Обработчики событий Socket.IO
-  setupSocketListeners();
+ // Инициализация Socket.IO
+socket = io(API_BASE_URL, {
+  reconnection: true,
+  reconnectionAttempts: 5,
+  reconnectionDelay: 1000,
+  transports: ['websocket']
+});
+
+// Обработчики событий Socket.IO
+setupSocketListeners();
+
+// Обработка ошибок подключения
+socket.on('connect_error', (error) => {
+  console.error('Ошибка подключения к серверу:', error);
+  alert('Ошибка подключения к серверу. Проверьте подключение к интернету и попробуйте обновить страницу.');
+});
+
+socket.on('reconnect_failed', () => {
+  console.error('Не удалось восстановить подключение после нескольких попыток');
+  alert('Не удалось подключиться к серверу после нескольких попыток. Пожалуйста, обновите страницу.');
+});
 
   // Состояние приложения
   const appState = {
