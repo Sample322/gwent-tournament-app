@@ -1,13 +1,13 @@
 // ===== GWENT Tournament App =====
 
-// Faction data
+// Данные фракций с изображениями
 const FACTIONS = [
-  { id: 'monsters', name: 'Монстры', icon: '👹' },
-  { id: 'nilfgaard', name: 'Нильфгаард', icon: '☀️' },
-  { id: 'northern', name: 'Северные Королевства', icon: '🦁' },
-  { id: 'scoiatael', name: "Скоя'таэли", icon: '🏹' },
-  { id: 'skellige', name: 'Скеллиге', icon: '⚓' },
-  { id: 'syndicate', name: 'Синдикат', icon: '💰' }
+  { id: 'monsters', name: 'Монстры', image: 'images/monsters.png' },
+  { id: 'nilfgaard', name: 'Нильфгаард', image: 'images/nilfgaard.png' },
+  { id: 'northern', name: 'Северные Королевства', image: 'images/northern-realms.png' },
+  { id: 'scoiatael', name: "Скоя'таэли", image: 'images/scoia-tael.png' },
+  { id: 'skellige', name: 'Скеллиге', image: 'images/skellige.png' },
+  { id: 'syndicate', name: 'Синдикат', image: 'images/syndicate.png' }
 ];
 
 // ===== App State =====
@@ -22,7 +22,7 @@ const AppState = {
   isCreator: false,
   tournamentFormat: 'bo3',
   
-  // Local selection state (never overwritten by server)
+  // Local selection state
   localSelectedFactions: [],
   localBannedFaction: null,
   
@@ -56,7 +56,6 @@ const Utils = {
   },
   
   coinFlip(lobbyCode) {
-    // Deterministic based on lobby code
     let hash = 0;
     for (let i = 0; i < lobbyCode.length; i++) {
       hash = ((hash << 5) - hash) + lobbyCode.charCodeAt(i);
@@ -82,29 +81,25 @@ const Utils = {
 
 // ===== Toast Notifications =====
 const Toast = {
-  container: null,
-  
-  init() {
-    this.container = document.createElement('div');
-    this.container.className = 'toast-container';
-    document.body.appendChild(this.container);
-  },
-  
   show(message, type = 'info', duration = 3000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
     toast.textContent = message;
-    this.container.appendChild(toast);
+    container.appendChild(toast);
     
     setTimeout(() => {
-      toast.style.animation = 'slide-in 0.3s ease reverse';
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(20px)';
       setTimeout(() => toast.remove(), 300);
     }, duration);
   },
   
-  success(message) { this.show(message, 'success'); },
-  error(message) { this.show(message, 'error'); },
-  info(message) { this.show(message, 'info'); }
+  success(msg) { this.show(msg, 'success'); },
+  error(msg) { this.show(msg, 'error'); },
+  info(msg) { this.show(msg, 'info'); }
 };
 
 // ===== Socket Manager =====
@@ -126,7 +121,6 @@ const SocketManager = {
     
     socket.on('connect', () => {
       console.log('Connected to server');
-      // Rejoin lobby if we have one
       if (AppState.lobby?.lobbyCode) {
         socket.emit('join-lobby', {
           lobbyCode: AppState.lobby.lobbyCode,
@@ -137,8 +131,8 @@ const SocketManager = {
     });
     
     socket.on('disconnect', () => {
-      console.log('Disconnected from server');
-      Toast.error('Соединение потеряно. Переподключение...');
+      console.log('Disconnected');
+      Toast.error('Соединение потеряно...');
     });
     
     socket.on('player-joined', (data) => {
@@ -150,11 +144,11 @@ const SocketManager = {
     });
     
     socket.on('error', (data) => {
-      Toast.error(data.message || 'Произошла ошибка');
+      Toast.error(data.message || 'Ошибка');
     });
     
-    socket.on('faction-selection-started', (data) => {
-      AppState.timerValue = 300; // 5 minutes
+    socket.on('faction-selection-started', () => {
+      AppState.timerValue = 300;
       AppState.selectionConfirmed = false;
       AppState.opponentConfirmed = false;
       AppState.localSelectedFactions = [];
@@ -181,14 +175,13 @@ const SocketManager = {
           AppState.opponentConfirmed = true;
           Toast.info('Оппонент подтвердил выбор');
         }
-        Renderer.updateOpponentStatus();
       }
     });
     
     socket.on('phase-changed', (data) => {
       if (data.phase === 'banning') {
         this.stopTimer();
-        AppState.timerValue = 180; // 3 minutes
+        AppState.timerValue = 180;
         AppState.banConfirmed = false;
         AppState.opponentConfirmed = false;
         AppState.localBannedFaction = null;
@@ -205,66 +198,40 @@ const SocketManager = {
       }
     });
     
-    socket.on('ban-phase-ended', (data) => {
+    socket.on('ban-phase-ended', () => {
       this.stopTimer();
       Renderer.renderPage('match-results');
     });
     
-    socket.on('lobby-reset', (data) => {
+    socket.on('lobby-reset', () => {
       AppState.localSelectedFactions = [];
       AppState.localBannedFaction = null;
       AppState.selectionConfirmed = false;
       AppState.banConfirmed = false;
       AppState.opponentConfirmed = false;
       Renderer.renderPage('lobby');
-      Toast.info('Лобби сброшено для новой игры');
+      Toast.info('Лобби сброшено');
     });
     
-    socket.on('selection-timer-expired', () => {
-      Toast.info('Время на выбор истекло');
-    });
-    
-    socket.on('ban-timer-expired', () => {
-      Toast.info('Время на бан истекло');
-    });
-    
-    socket.on('player-disconnected', (data) => {
+    socket.on('player-disconnected', () => {
       Toast.error('Оппонент отключился');
     });
     
-    socket.on('player-reconnected', (data) => {
-      Toast.success('Оппонент переподключился');
-    });
-    
-    socket.on('reconnect-success', (data) => {
-      AppState.lobby = data.lobby;
-      if (data.playerState) {
-        AppState.localSelectedFactions = data.playerState.selections || [];
-        AppState.localBannedFaction = data.playerState.bannedFaction;
-        AppState.selectionConfirmed = data.playerState.selectionConfirmed;
-        AppState.banConfirmed = data.playerState.banConfirmed;
-      }
-      Toast.success('Переподключение успешно');
+    socket.on('player-reconnected', () => {
+      Toast.success('Оппонент вернулся');
     });
   },
   
   handleLobbyUpdate(lobby) {
     AppState.lobby = lobby;
-    
-    // Update tournament format
     AppState.tournamentFormat = lobby.tournamentFormat || 'bo3';
-    
-    // Update factions from server
     AppState.creatorSelectedFactions = lobby.creatorSelectedFactions || [];
     AppState.opponentSelectedFactions = lobby.opponentSelectedFactions || [];
     AppState.creatorBannedFaction = lobby.creatorBannedFaction;
     AppState.opponentBannedFaction = lobby.opponentBannedFaction;
     
-    // Re-render current page
-    if (AppState.currentPage === 'lobby') {
-      Renderer.renderPage('lobby');
-    } else if (AppState.currentPage === 'match-results') {
-      Renderer.renderPage('match-results');
+    if (AppState.currentPage === 'lobby' || AppState.currentPage === 'match-results') {
+      Renderer.renderPage(AppState.currentPage);
     }
   },
   
@@ -273,7 +240,6 @@ const SocketManager = {
     AppState.timer = setInterval(() => {
       AppState.timerValue--;
       Renderer.updateTimer();
-      
       if (AppState.timerValue <= 0) {
         this.stopTimer();
         this.handleTimerExpired();
@@ -290,7 +256,6 @@ const SocketManager = {
   
   handleTimerExpired() {
     if (AppState.currentPage === 'select-factions' && !AppState.selectionConfirmed) {
-      // Auto-select remaining factions
       const required = Utils.getRequiredFactions(AppState.tournamentFormat);
       while (AppState.localSelectedFactions.length < required) {
         const available = FACTIONS.filter(f => !AppState.localSelectedFactions.includes(f.id));
@@ -300,7 +265,6 @@ const SocketManager = {
       }
       this.confirmSelection();
     } else if (AppState.currentPage === 'ban-phase' && !AppState.banConfirmed) {
-      // Auto-ban first available
       const opponentFactions = AppState.isCreator 
         ? AppState.opponentSelectedFactions 
         : AppState.creatorSelectedFactions;
@@ -328,7 +292,7 @@ const SocketManager = {
       
       if (!response.ok) {
         const error = await response.json();
-        Toast.error(error.message || 'Ошибка создания лобби');
+        Toast.error(error.message || 'Ошибка создания');
         return;
       }
       
@@ -336,7 +300,6 @@ const SocketManager = {
       AppState.lobby = lobby;
       AppState.isCreator = true;
       
-      // Join socket room
       AppState.socket.emit('join-lobby', {
         lobbyCode: lobby.lobbyCode,
         playerId: AppState.player.id,
@@ -346,8 +309,8 @@ const SocketManager = {
       Renderer.renderPage('lobby');
       Toast.success('Лобби создано!');
     } catch (error) {
-      console.error('Error creating lobby:', error);
-      Toast.error('Ошибка сети при создании лобби');
+      console.error('Create error:', error);
+      Toast.error('Ошибка сети');
     }
   },
   
@@ -367,7 +330,7 @@ const SocketManager = {
       
       if (!response.ok) {
         const error = await response.json();
-        Toast.error(error.message || 'Ошибка присоединения к лобби');
+        Toast.error(error.message || 'Ошибка');
         return;
       }
       
@@ -376,7 +339,6 @@ const SocketManager = {
       AppState.isCreator = lobby.creator?.id === AppState.player.id;
       AppState.tournamentFormat = lobby.tournamentFormat;
       
-      // Join socket room
       AppState.socket.emit('join-lobby', {
         lobbyCode: lobby.lobbyCode,
         playerId: AppState.player.id,
@@ -384,10 +346,10 @@ const SocketManager = {
       });
       
       Renderer.renderPage('lobby');
-      Toast.success('Присоединились к лобби!');
+      Toast.success('Присоединились!');
     } catch (error) {
-      console.error('Error joining lobby:', error);
-      Toast.error('Ошибка сети при присоединении к лобби');
+      console.error('Join error:', error);
+      Toast.error('Ошибка сети');
     }
   },
   
@@ -409,7 +371,6 @@ const SocketManager = {
   
   confirmSelection() {
     if (AppState.selectionConfirmed) return;
-    
     AppState.socket.emit('confirm-faction-selection', {
       lobbyCode: AppState.lobby.lobbyCode,
       playerId: AppState.player.id,
@@ -419,7 +380,6 @@ const SocketManager = {
   
   confirmBan() {
     if (AppState.banConfirmed) return;
-    
     AppState.socket.emit('confirm-faction-ban', {
       lobbyCode: AppState.lobby.lobbyCode,
       playerId: AppState.player.id,
@@ -434,12 +394,6 @@ const SocketManager = {
   },
   
   leaveLobby() {
-    if (AppState.lobby?.lobbyCode) {
-      AppState.socket.emit('leave-lobby', {
-        lobbyCode: AppState.lobby.lobbyCode,
-        playerId: AppState.player.id
-      });
-    }
     AppState.lobby = null;
     Renderer.renderPage('home');
   }
@@ -450,44 +404,50 @@ const Renderer = {
   renderPage(page) {
     AppState.currentPage = page;
     const app = document.getElementById('app');
+    if (!app) return;
     
+    let html = '';
     switch(page) {
       case 'home':
-        app.innerHTML = this.renderHomePage();
+        html = this.renderHomePage();
         break;
       case 'create-lobby':
-        app.innerHTML = this.renderCreateLobbyPage();
+        html = this.renderCreateLobbyPage();
         break;
       case 'join-lobby':
-        app.innerHTML = this.renderJoinLobbyPage();
+        html = this.renderJoinLobbyPage();
         break;
       case 'lobby':
-        app.innerHTML = this.renderLobbyPage();
+        html = this.renderLobbyPage();
         break;
       case 'select-factions':
-        app.innerHTML = this.renderSelectFactionsPage();
+        html = this.renderSelectFactionsPage();
         break;
       case 'ban-phase':
-        app.innerHTML = this.renderBanPhasePage();
+        html = this.renderBanPhasePage();
         break;
       case 'match-results':
-        app.innerHTML = this.renderMatchResultsPage();
+        html = this.renderMatchResultsPage();
         break;
     }
     
+    app.innerHTML = html;
     this.attachEventListeners();
   },
   
   renderHomePage() {
     return `
       <div class="page home-page">
-        <h1>GWENT</h1>
-        <p>Турнирный помощник</p>
+        <div class="logo-container">
+          <img src="images/gwent-logo.png" alt="GWENT" class="logo">
+        </div>
+        <h1 class="title title-large">GWENT</h1>
+        <p class="subtitle">Турнирный помощник</p>
         <div class="home-buttons">
-          <button class="btn btn-primary btn-full" data-action="goto-create">
+          <button class="btn btn-primary" data-action="goto-create">
             Создать лобби
           </button>
-          <button class="btn btn-secondary btn-full" data-action="goto-join">
+          <button class="btn btn-secondary" data-action="goto-join">
             Присоединиться
           </button>
         </div>
@@ -498,7 +458,7 @@ const Renderer = {
   renderCreateLobbyPage() {
     return `
       <div class="page">
-        <h1>Создать лобби</h1>
+        <h1 class="title title-medium">Создать лобби</h1>
         
         <div class="form-group">
           <label class="form-label">Ваше имя</label>
@@ -507,15 +467,15 @@ const Renderer = {
         
         <div class="form-group">
           <label class="form-label">Формат турнира</label>
-          <div class="format-options">
-            <label class="format-option selected">
+          <div class="format-grid">
+            <label class="format-card selected" data-format="bo3">
               <input type="radio" name="format" value="bo3" checked>
-              <div class="format-name">Bo3</div>
+              <div class="format-title">Bo3</div>
               <div class="format-desc">3 фракции</div>
             </label>
-            <label class="format-option">
+            <label class="format-card" data-format="bo5">
               <input type="radio" name="format" value="bo5">
-              <div class="format-name">Bo5</div>
+              <div class="format-title">Bo5</div>
               <div class="format-desc">4 фракции</div>
             </label>
           </div>
@@ -532,7 +492,7 @@ const Renderer = {
   renderJoinLobbyPage() {
     return `
       <div class="page">
-        <h1>Присоединиться</h1>
+        <h1 class="title title-medium">Присоединиться</h1>
         
         <div class="form-group">
           <label class="form-label">Ваше имя</label>
@@ -541,7 +501,7 @@ const Renderer = {
         
         <div class="form-group">
           <label class="form-label">Код лобби</label>
-          <input type="text" class="form-input" id="lobby-code" placeholder="GW1234" maxlength="6" style="text-transform: uppercase; letter-spacing: 0.3em; text-align: center; font-size: 1.5rem;">
+          <input type="text" class="form-input input-code" id="lobby-code" placeholder="GW1234" maxlength="6">
         </div>
         
         <div class="action-buttons">
@@ -557,11 +517,11 @@ const Renderer = {
     const hasOpponent = lobby.opponent && lobby.opponent.id;
     
     return `
-      <div class="page lobby-page">
-        <h1>Лобби</h1>
+      <div class="page">
+        <h1 class="title title-medium">Лобби</h1>
         
-        <div class="lobby-code-display">
-          <div class="form-label">Код для подключения</div>
+        <div class="lobby-code-box">
+          <div class="lobby-code-label">Код для подключения</div>
           <div class="lobby-code">${lobby.lobbyCode}</div>
           <button class="copy-btn" data-action="copy-code" title="Копировать">📋</button>
         </div>
@@ -571,25 +531,25 @@ const Renderer = {
           <p>Нужно выбрать ${Utils.getRequiredFactions(lobby.tournamentFormat)} фракции</p>
         </div>
         
-        <div class="players-list">
-          <h3>Игроки</h3>
+        <div class="players-section">
+          <div class="section-title">Игроки</div>
           
-          <div class="player-item">
-            <div class="player-avatar">👤</div>
+          <div class="player-row">
+            <div class="player-avatar">👑</div>
             <div class="player-name">${lobby.creator?.name || 'Создатель'}</div>
             <span class="player-status status-ready">Готов</span>
           </div>
           
           ${hasOpponent ? `
-            <div class="player-item">
-              <div class="player-avatar">👤</div>
+            <div class="player-row">
+              <div class="player-avatar">⚔️</div>
               <div class="player-name">${lobby.opponent.name}</div>
               <span class="player-status status-ready">Готов</span>
             </div>
           ` : `
-            <div class="waiting-opponent">
+            <div class="waiting-box">
               <div class="spinner"></div>
-              <p>Ожидание второго игрока...</p>
+              <p class="waiting-text">Ожидание второго игрока...</p>
             </div>
           `}
         </div>
@@ -597,7 +557,7 @@ const Renderer = {
         <div class="action-buttons">
           <button class="btn btn-danger" data-action="leave-lobby">Выйти</button>
           ${AppState.isCreator && hasOpponent ? `
-            <button class="btn btn-primary" data-action="start-game">Начать игру</button>
+            <button class="btn btn-primary" data-action="start-game">Начать</button>
           ` : ''}
         </div>
       </div>
@@ -609,17 +569,17 @@ const Renderer = {
     const selected = AppState.localSelectedFactions;
     
     return `
-      <div class="page selection-page">
-        <div class="selection-header">
-          <h2>Выберите фракции</h2>
-          <div class="timer" id="timer">${Utils.formatTime(AppState.timerValue)}</div>
+      <div class="page">
+        <div class="timer-section">
+          <h2 class="title title-medium">Выбор фракций</h2>
+          <div class="timer-display" id="timer">${Utils.formatTime(AppState.timerValue)}</div>
           <div class="selection-info">Выберите ${required} фракции</div>
           <div class="selection-counter">${selected.length} / ${required}</div>
         </div>
         
         <div class="opponent-status">
-          <span>Оппонент выбирает...</span>
-          <div class="opponent-progress" id="opponent-progress">
+          <span class="opponent-status-text">Оппонент выбирает...</span>
+          <div class="progress-dots" id="opponent-progress">
             ${Array(required).fill(0).map((_, i) => 
               `<div class="progress-dot ${i < AppState.opponentProgress ? 'filled' : ''}"></div>`
             ).join('')}
@@ -627,24 +587,23 @@ const Renderer = {
         </div>
         
         ${AppState.selectionConfirmed ? `
-          <div class="confirmation-status">
-            ✓ Выбор подтверждён. Ожидание оппонента...
-          </div>
+          <div class="confirmed-box">✓ Выбор подтверждён. Ожидание оппонента...</div>
         ` : ''}
         
         <div class="faction-grid">
           ${FACTIONS.map(faction => `
             <div class="faction-card ${selected.includes(faction.id) ? 'selected' : ''} ${AppState.selectionConfirmed ? 'disabled' : ''}" 
                  data-faction="${faction.id}">
-              <div class="faction-icon">${faction.icon}</div>
-              <div class="faction-name">${faction.name}</div>
+              <div class="faction-image" style="background-image: url('${faction.image}')"></div>
+              <div class="faction-name-bar">
+                <div class="faction-name">${faction.name}</div>
+              </div>
             </div>
           `).join('')}
         </div>
         
         ${!AppState.selectionConfirmed ? `
-          <button class="btn btn-primary btn-full" data-action="confirm-selection" 
-                  ${selected.length !== required ? 'disabled' : ''}>
+          <button class="btn btn-primary" data-action="confirm-selection" ${selected.length !== required ? 'disabled' : ''}>
             Подтвердить выбор
           </button>
         ` : ''}
@@ -658,20 +617,18 @@ const Renderer = {
       : AppState.creatorSelectedFactions;
     
     return `
-      <div class="page selection-page">
-        <div class="selection-header">
-          <h2>Фаза бана</h2>
-          <div class="timer" id="timer">${Utils.formatTime(AppState.timerValue)}</div>
+      <div class="page">
+        <div class="timer-section">
+          <h2 class="title title-medium">Фаза бана</h2>
+          <div class="timer-display" id="timer">${Utils.formatTime(AppState.timerValue)}</div>
           <div class="selection-info">Забаньте одну фракцию оппонента</div>
         </div>
         
         ${AppState.banConfirmed ? `
-          <div class="confirmation-status">
-            ✓ Бан подтверждён. Ожидание оппонента...
-          </div>
+          <div class="confirmed-box">✓ Бан подтверждён. Ожидание оппонента...</div>
         ` : ''}
         
-        <h3 style="margin-bottom: 1rem;">Фракции оппонента:</h3>
+        <div class="section-title">Фракции оппонента</div>
         <div class="faction-grid">
           ${opponentFactions.map(factionId => {
             const faction = FACTIONS.find(f => f.id === factionId);
@@ -679,16 +636,17 @@ const Renderer = {
             return `
               <div class="faction-card ${AppState.localBannedFaction === factionId ? 'banned' : ''} ${AppState.banConfirmed ? 'disabled' : ''}" 
                    data-ban-faction="${factionId}">
-                <div class="faction-icon">${faction.icon}</div>
-                <div class="faction-name">${faction.name}</div>
+                <div class="faction-image" style="background-image: url('${faction.image}')"></div>
+                <div class="faction-name-bar">
+                  <div class="faction-name">${faction.name}</div>
+                </div>
               </div>
             `;
           }).join('')}
         </div>
         
         ${!AppState.banConfirmed ? `
-          <button class="btn btn-danger btn-full" data-action="confirm-ban" 
-                  ${!AppState.localBannedFaction ? 'disabled' : ''}>
+          <button class="btn btn-danger" data-action="confirm-ban" ${!AppState.localBannedFaction ? 'disabled' : ''}>
             Подтвердить бан
           </button>
         ` : ''}
@@ -699,6 +657,7 @@ const Renderer = {
   renderMatchResultsPage() {
     const lobby = AppState.lobby;
     const creatorFirst = Utils.coinFlip(lobby.lobbyCode);
+    const coinImage = creatorFirst ? 'images/blue-coin.png' : 'images/red-coin.png';
     
     const creatorFactions = lobby.creatorSelectedFactions || [];
     const opponentFactions = lobby.opponentSelectedFactions || [];
@@ -706,49 +665,47 @@ const Renderer = {
     const opponentBan = lobby.creatorBannedFaction;
     
     return `
-      <div class="page results-page">
-        <h1>Результаты</h1>
+      <div class="page">
+        <div class="results-header">
+          <h1 class="title title-medium">Результаты</h1>
+        </div>
         
-        <div class="results-container">
-          <div class="player-results">
-            <h3>${lobby.creator?.name || 'Игрок 1'}</h3>
-            <div class="results-factions">
-              ${creatorFactions.map(factionId => {
-                const faction = FACTIONS.find(f => f.id === factionId);
-                const isBanned = factionId === creatorBan;
+        <div class="vs-section">
+          <div class="player-result-card">
+            <div class="player-result-name">${lobby.creator?.name || 'Игрок 1'}</div>
+            <div class="result-factions">
+              ${creatorFactions.map(fid => {
+                const f = FACTIONS.find(x => x.id === fid);
+                const banned = fid === creatorBan;
                 return `
-                  <div class="result-faction ${isBanned ? 'banned' : ''}">
-                    <span class="faction-icon">${faction?.icon || '?'}</span>
-                    <span>${faction?.name || factionId}</span>
-                    ${isBanned ? '<span style="margin-left: auto; color: var(--accent-red);">ЗАБАНЕНО</span>' : ''}
+                  <div class="result-faction-item ${banned ? 'banned' : ''}">
+                    <div class="result-faction-icon" style="background-image: url('${f?.image}')"></div>
+                    <span class="result-faction-name">${f?.name || fid}</span>
                   </div>
                 `;
               }).join('')}
             </div>
           </div>
           
-          <div class="vs-divider">
+          <div class="vs-badge">
             <div class="vs-text">VS</div>
-            <div class="coin-result">
-              <div class="coin-icon">${creatorFirst ? '👑' : '🎲'}</div>
-              <div class="coin-label">Первый ход</div>
+            <div class="coin-display">
+              <img src="${coinImage}" alt="coin" class="coin-image">
             </div>
-            <div style="font-size: 0.9rem; color: var(--text-secondary);">
-              ${creatorFirst ? lobby.creator?.name : lobby.opponent?.name}
-            </div>
+            <div class="first-player-text">Первый ход</div>
+            <div class="first-player-name">${creatorFirst ? lobby.creator?.name : lobby.opponent?.name}</div>
           </div>
           
-          <div class="player-results">
-            <h3>${lobby.opponent?.name || 'Игрок 2'}</h3>
-            <div class="results-factions">
-              ${opponentFactions.map(factionId => {
-                const faction = FACTIONS.find(f => f.id === factionId);
-                const isBanned = factionId === opponentBan;
+          <div class="player-result-card">
+            <div class="player-result-name">${lobby.opponent?.name || 'Игрок 2'}</div>
+            <div class="result-factions">
+              ${opponentFactions.map(fid => {
+                const f = FACTIONS.find(x => x.id === fid);
+                const banned = fid === opponentBan;
                 return `
-                  <div class="result-faction ${isBanned ? 'banned' : ''}">
-                    <span class="faction-icon">${faction?.icon || '?'}</span>
-                    <span>${faction?.name || factionId}</span>
-                    ${isBanned ? '<span style="margin-left: auto; color: var(--accent-red);">ЗАБАНЕНО</span>' : ''}
+                  <div class="result-faction-item ${banned ? 'banned' : ''}">
+                    <div class="result-faction-icon" style="background-image: url('${f?.image}')"></div>
+                    <span class="result-faction-name">${f?.name || fid}</span>
                   </div>
                 `;
               }).join('')}
@@ -756,7 +713,7 @@ const Renderer = {
           </div>
         </div>
         
-        <div class="action-buttons" style="margin-top: 2rem;">
+        <div class="action-buttons">
           ${AppState.isCreator ? `
             <button class="btn btn-secondary" data-action="reset-lobby">Новая игра</button>
           ` : ''}
@@ -767,12 +724,10 @@ const Renderer = {
   },
   
   updateTimer() {
-    const timerEl = document.getElementById('timer');
-    if (timerEl) {
-      timerEl.textContent = Utils.formatTime(AppState.timerValue);
-      if (AppState.timerValue <= 10) {
-        timerEl.classList.add('warning');
-      }
+    const el = document.getElementById('timer');
+    if (el) {
+      el.textContent = Utils.formatTime(AppState.timerValue);
+      el.classList.toggle('warning', AppState.timerValue <= 10);
     }
   },
   
@@ -787,18 +742,11 @@ const Renderer = {
   },
   
   updateConfirmationStatus() {
-    // Re-render current page to show confirmation
     this.renderPage(AppState.currentPage);
   },
   
-  updateOpponentStatus() {
-    // Could add visual indicator that opponent confirmed
-    if (AppState.opponentConfirmed) {
-      Toast.info('Оппонент подтвердил выбор');
-    }
-  },
-  
   attachEventListeners() {
+    // Action buttons
     document.querySelectorAll('[data-action]').forEach(el => {
       el.addEventListener('click', (e) => {
         const action = e.currentTarget.dataset.action;
@@ -806,6 +754,7 @@ const Renderer = {
       });
     });
     
+    // Faction selection
     document.querySelectorAll('[data-faction]').forEach(el => {
       el.addEventListener('click', (e) => {
         if (AppState.selectionConfirmed) return;
@@ -814,6 +763,7 @@ const Renderer = {
       });
     });
     
+    // Ban selection
     document.querySelectorAll('[data-ban-faction]').forEach(el => {
       el.addEventListener('click', (e) => {
         if (AppState.banConfirmed) return;
@@ -822,11 +772,12 @@ const Renderer = {
       });
     });
     
-    // Format option selection
-    document.querySelectorAll('.format-option').forEach(el => {
+    // Format cards
+    document.querySelectorAll('.format-card').forEach(el => {
       el.addEventListener('click', () => {
-        document.querySelectorAll('.format-option').forEach(opt => opt.classList.remove('selected'));
+        document.querySelectorAll('.format-card').forEach(c => c.classList.remove('selected'));
         el.classList.add('selected');
+        el.querySelector('input').checked = true;
       });
     });
   },
@@ -846,7 +797,7 @@ const Renderer = {
         const createName = document.getElementById('player-name')?.value.trim();
         const format = document.querySelector('input[name="format"]:checked')?.value || 'bo3';
         if (!createName) {
-          Toast.error('Введите ваше имя');
+          Toast.error('Введите имя');
           return;
         }
         SocketManager.createLobby(createName, format);
@@ -855,7 +806,7 @@ const Renderer = {
         const joinName = document.getElementById('player-name')?.value.trim();
         const code = document.getElementById('lobby-code')?.value.trim().toUpperCase();
         if (!joinName) {
-          Toast.error('Введите ваше имя');
+          Toast.error('Введите имя');
           return;
         }
         if (!code || code.length < 4) {
@@ -899,10 +850,7 @@ const Renderer = {
       return;
     }
     
-    // Update UI
     this.renderPage('select-factions');
-    
-    // Send progress to server
     SocketManager.saveSelectionProgress();
   },
   
@@ -912,9 +860,9 @@ const Renderer = {
   }
 };
 
-// ===== Initialize App =====
+// ===== Initialize =====
 function initApp() {
-  // Check for Telegram WebApp
+  // Telegram WebApp
   if (window.Telegram?.WebApp) {
     const tg = window.Telegram.WebApp;
     tg.ready();
@@ -927,24 +875,11 @@ function initApp() {
     }
   }
   
-  // Initialize components
-  Toast.init();
   SocketManager.connect();
   Renderer.renderPage('home');
-  
-  // Add background effects
-  const bgEffects = document.createElement('div');
-  bgEffects.className = 'background-effects';
-  bgEffects.innerHTML = `
-    <div class="bg-gradient"></div>
-    <div class="bg-particles">
-      ${Array(10).fill(0).map(() => '<div class="particle"></div>').join('')}
-    </div>
-  `;
-  document.body.prepend(bgEffects);
 }
 
-// Start app when DOM is ready
+// Start
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initApp);
 } else {
