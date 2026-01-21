@@ -1,148 +1,156 @@
-const mongoose = require('mongoose');
+const { DataTypes, Op } = require('sequelize');
+const { sequelize } = require('../config/database');
 
-const PlayerSchema = new mongoose.Schema({
-  id: { type: String, required: true },
-  name: { type: String, default: 'Игрок' }
-}, { _id: false });
-
-const LobbySchema = new mongoose.Schema({
+const Lobby = sequelize.define('Lobby', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
   lobbyCode: {
-    type: String,
-    required: true,
+    type: DataTypes.STRING(10),
+    allowNull: false,
     unique: true,
-    uppercase: true,
-    trim: true,
-    index: true
+    field: 'lobby_code'
   },
-  creator: {
-    type: PlayerSchema,
-    required: true
+  
+  // Создатель
+  creatorId: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+    field: 'creator_id'
   },
-  opponent: {
-    type: PlayerSchema,
-    default: null
+  creatorName: {
+    type: DataTypes.STRING(50),
+    defaultValue: 'Игрок 1',
+    field: 'creator_name'
   },
-  spectators: {
-    type: [PlayerSchema],
-    default: []
+  
+  // Оппонент
+  opponentId: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+    field: 'opponent_id'
   },
+  opponentName: {
+    type: DataTypes.STRING(50),
+    defaultValue: 'Игрок 2',
+    field: 'opponent_name'
+  },
+  
+  // Формат турнира
   tournamentFormat: {
-    type: String,
-    enum: ['bo3', 'bo5'],
-    default: 'bo3'
+    type: DataTypes.ENUM('bo3', 'bo5'),
+    defaultValue: 'bo3',
+    field: 'tournament_format'
   },
+  
+  // Статус
   status: {
-    type: String,
-    enum: ['waiting', 'selecting-factions', 'banning', 'match-results'],
-    default: 'waiting',
-    index: true
+    type: DataTypes.ENUM('waiting', 'selecting-factions', 'banning', 'match-results'),
+    defaultValue: 'waiting'
   },
-  // Выбранные фракции
+  
+  // Выбранные фракции (хранятся как JSON массивы)
   creatorSelectedFactions: {
-    type: [String],
-    default: [],
-    validate: {
-      validator: function(v) {
-        return v.length <= 4; // Максимум 4 для bo5
-      },
-      message: 'Максимум 4 фракции'
-    }
+    type: DataTypes.JSON,
+    defaultValue: [],
+    field: 'creator_selected_factions'
   },
   opponentSelectedFactions: {
-    type: [String],
-    default: [],
-    validate: {
-      validator: function(v) {
-        return v.length <= 4;
-      },
-      message: 'Максимум 4 фракции'
-    }
+    type: DataTypes.JSON,
+    defaultValue: [],
+    field: 'opponent_selected_factions'
   },
+  
   // Забаненные фракции
   creatorBannedFaction: {
-    type: String,
-    default: null
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    field: 'creator_banned_faction'
   },
   opponentBannedFaction: {
-    type: String,
-    default: null
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    field: 'opponent_banned_faction'
   },
-  // Оставшиеся фракции после бана
+  
+  // Оставшиеся фракции
   creatorRemainingFactions: {
-    type: [String],
-    default: []
+    type: DataTypes.JSON,
+    defaultValue: [],
+    field: 'creator_remaining_factions'
   },
   opponentRemainingFactions: {
-    type: [String],
-    default: []
+    type: DataTypes.JSON,
+    defaultValue: [],
+    field: 'opponent_remaining_factions'
   },
+  
   // Время последней активности
   lastActivity: {
-    type: Date,
-    default: Date.now,
-    index: true
-  },
-  // Время создания
-  createdAt: {
-    type: Date,
-    default: Date.now,
-    index: { expireAfterSeconds: 10800 } // TTL: автоудаление через 3 часа
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
+    field: 'last_activity'
   }
 }, {
-  timestamps: false,
-  versionKey: false
+  tableName: 'lobbies',
+  timestamps: true,
+  createdAt: 'created_at',
+  updatedAt: 'updated_at',
+  indexes: [
+    { fields: ['lobby_code'], unique: true },
+    { fields: ['status'] },
+    { fields: ['last_activity'] },
+    { fields: ['creator_id'] }
+  ]
 });
 
-// Составной индекс для эффективных запросов
-LobbySchema.index({ status: 1, lastActivity: -1 });
-
-// Виртуальное поле для проверки готовности
-LobbySchema.virtual('isReady').get(function() {
-  return this.creator && this.opponent && this.creator.id && this.opponent.id;
-});
-
-// Виртуальное поле для количества игроков
-LobbySchema.virtual('playerCount').get(function() {
-  let count = 0;
-  if (this.creator?.id) count++;
-  if (this.opponent?.id) count++;
-  return count;
-});
-
-// Метод для проверки, является ли игрок участником
-LobbySchema.methods.isParticipant = function(playerId) {
-  return (this.creator?.id === playerId) || (this.opponent?.id === playerId);
+// Методы экземпляра
+Lobby.prototype.isParticipant = function(playerId) {
+  return this.creatorId === playerId || this.opponentId === playerId;
 };
 
-// Метод для получения роли игрока
-LobbySchema.methods.getPlayerRole = function(playerId) {
-  if (this.creator?.id === playerId) return 'creator';
-  if (this.opponent?.id === playerId) return 'opponent';
+Lobby.prototype.getPlayerRole = function(playerId) {
+  if (this.creatorId === playerId) return 'creator';
+  if (this.opponentId === playerId) return 'opponent';
   return null;
 };
 
-// Middleware для обновления lastActivity
-LobbySchema.pre('save', function(next) {
-  if (this.isModified() && !this.isModified('lastActivity')) {
-    this.lastActivity = new Date();
-  }
-  next();
-});
-
-// Статический метод для очистки старых лобби
-LobbySchema.statics.cleanupOldLobbies = async function(hoursOld = 3) {
-  const cutoffTime = new Date(Date.now() - hoursOld * 60 * 60 * 1000);
-  const result = await this.deleteMany({ lastActivity: { $lt: cutoffTime } });
-  return result.deletedCount;
+// Преобразование в формат для API (совместимый с предыдущей версией)
+Lobby.prototype.toAPIFormat = function() {
+  return {
+    lobbyCode: this.lobbyCode,
+    creator: {
+      id: this.creatorId,
+      name: this.creatorName
+    },
+    opponent: this.opponentId ? {
+      id: this.opponentId,
+      name: this.opponentName
+    } : null,
+    tournamentFormat: this.tournamentFormat,
+    status: this.status,
+    creatorSelectedFactions: this.creatorSelectedFactions || [],
+    opponentSelectedFactions: this.opponentSelectedFactions || [],
+    creatorBannedFaction: this.creatorBannedFaction,
+    opponentBannedFaction: this.opponentBannedFaction,
+    creatorRemainingFactions: this.creatorRemainingFactions || [],
+    opponentRemainingFactions: this.opponentRemainingFactions || [],
+    lastActivity: this.lastActivity,
+    createdAt: this.created_at
+  };
 };
 
-// JSON трансформация для API ответов
-LobbySchema.set('toJSON', {
-  virtuals: true,
-  transform: function(doc, ret) {
-    delete ret._id;
-    return ret;
-  }
-});
+// Статический метод для очистки старых лобби
+Lobby.cleanupOldLobbies = async function(hoursOld = 3) {
+  const cutoffTime = new Date(Date.now() - hoursOld * 60 * 60 * 1000);
+  const result = await this.destroy({
+    where: {
+      lastActivity: { [Op.lt]: cutoffTime }
+    }
+  });
+  return result;
+};
 
-module.exports = mongoose.model('Lobby', LobbySchema);
+module.exports = Lobby;

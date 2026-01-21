@@ -6,14 +6,15 @@
   "scripts": {
     "start": "node server/server.js",
     "dev": "nodemon server/server.js",
-    "test": "echo \"No tests yet\" && exit 0"
+    "db:sync": "node server/db/sync.js"
   },
   "keywords": [
     "gwent",
     "tournament",
     "telegram",
     "mini-app",
-    "socket.io"
+    "socket.io",
+    "postgresql"
   ],
   "author": "",
   "license": "MIT",
@@ -23,7 +24,9 @@
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "express-rate-limit": "^7.1.5",
-    "mongoose": "^8.0.0",
+    "pg": "^8.11.3",
+    "pg-hstore": "^2.3.4",
+    "sequelize": "^6.35.2",
     "socket.io": "^4.7.2"
   },
   "devDependencies": {

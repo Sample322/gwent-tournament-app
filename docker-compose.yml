@@ -9,7 +9,8 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - HOST=0.0.0.0
-      - MONGODB_URI=${MONGODB_URI}
+      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_SSL=${DATABASE_SSL:-true}
       - CORS_ORIGIN=${CORS_ORIGIN:-*}
       - ADMIN_API_KEY=${ADMIN_API_KEY}
     restart: unless-stopped
@@ -20,15 +21,17 @@ services:
       retries: 3
       start_period: 10s
 
-  # Опционально: локальный MongoDB для разработки
-  # mongodb:
-  #   image: mongo:7
+  # Опционально: локальный PostgreSQL для разработки
+  # postgres:
+  #   image: postgres:16-alpine
   #   ports:
-  #     - "27017:27017"
-  #   volumes:
-  #     - mongodb_data:/data/db
+  #     - "5432:5432"
   #   environment:
-  #     - MONGO_INITDB_DATABASE=gwent
+  #     POSTGRES_DB: gwent
+  #     POSTGRES_USER: gwent_user
+  #     POSTGRES_PASSWORD: your_password_here
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
 
 # volumes:
-#   mongodb_data:
+#   postgres_data:

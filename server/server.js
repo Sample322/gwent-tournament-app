@@ -3,10 +3,14 @@ const express = require('express');
 const http = require('http');
 const path = require('path');
 const cors = require('cors');
-const mongoose = require('mongoose');
 const socketIo = require('socket.io');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
+
+// Подключение к базе данных
+const { sequelize, connectWithRetry } = require('./config/database');
+
+// Роуты
 const lobbyRoutes = require('./routes/lobbyRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 
@@ -53,14 +57,23 @@ app.use(express.static(path.join(__dirname, '../client'), {
 }));
 
 // Health check endpoint (важно для TimeWeb)
-app.get('/health', (req, res) => {
-  const healthCheck = {
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
-  };
-  res.status(200).json(healthCheck);
+app.get('/health', async (req, res) => {
+  try {
+    await sequelize.authenticate();
+    res.status(200).json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      database: 'connected'
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      timestamp: new Date().toISOString(),
+      database: 'disconnected',
+      error: error.message
+    });
+  }
 });
 
 // API Routes
@@ -84,58 +97,31 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Настройки подключения MongoDB
-const mongoOptions = {
-  serverSelectionTimeoutMS: 10000,
-  socketTimeoutMS: 45000,
-  maxPoolSize: 10,
-  minPoolSize: 2,
-  retryWrites: true,
-  w: 'majority'
-};
-
-// Функция подключения к MongoDB с повторными попытками
-const connectWithRetry = async (retries = 5, delay = 5000) => {
-  for (let i = 0; i < retries; i++) {
-    try {
-      await mongoose.connect(process.env.MONGODB_URI, mongoOptions);
-      console.log('✅ MongoDB подключено успешно');
-      return;
-    } catch (err) {
-      console.error(`❌ Попытка ${i + 1}/${retries} подключения к MongoDB не удалась:`, err.message);
-      if (i < retries - 1) {
-        console.log(`⏳ Повторная попытка через ${delay / 1000} секунд...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-  }
-  console.error('❌ Не удалось подключиться к MongoDB после всех попыток');
-  process.exit(1);
-};
-
-// Обработчики событий MongoDB
-mongoose.connection.on('error', err => {
-  console.error('❌ Ошибка соединения с MongoDB:', err);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.log('⚠️ MongoDB отключено');
-});
-
-mongoose.connection.on('reconnected', () => {
-  console.log('✅ MongoDB переподключено');
-});
-
 // Запуск сервера
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
 const startServer = async () => {
-  await connectWithRetry();
+  // Подключаемся к PostgreSQL
+  const connected = await connectWithRetry();
+  
+  if (!connected) {
+    console.error('❌ Не удалось подключиться к базе данных. Завершение работы.');
+    process.exit(1);
+  }
+  
+  // Синхронизируем модели (создаём таблицы если их нет)
+  try {
+    await sequelize.sync();
+    console.log('✅ Таблицы базы данных готовы');
+  } catch (err) {
+    console.error('❌ Ошибка синхронизации моделей:', err);
+  }
   
   server.listen(PORT, HOST, () => {
     console.log(`🚀 Сервер запущен на ${HOST}:${PORT}`);
     console.log(`📊 Режим: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🗄️ База данных: PostgreSQL`);
   });
 };
 
@@ -155,9 +141,9 @@ const gracefulShutdown = async (signal) => {
         console.log('✅ Socket.IO соединения закрыты');
       });
       
-      // Закрываем MongoDB
-      await mongoose.connection.close();
-      console.log('✅ MongoDB соединение закрыто');
+      // Закрываем PostgreSQL
+      await sequelize.close();
+      console.log('✅ PostgreSQL соединение закрыто');
       
       process.exit(0);
     } catch (err) {

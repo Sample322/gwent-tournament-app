@@ -1,116 +1,128 @@
-const mongoose = require('mongoose');
+const { DataTypes, Op } = require('sequelize');
+const { sequelize } = require('../config/database');
 
-const RoundSchema = new mongoose.Schema({
-  roundNumber: { type: Number, required: true },
-  creatorFaction: { type: String },
-  opponentFaction: { type: String },
-  winner: { type: String, enum: ['creator', 'opponent', 'draw', null], default: null },
-  notes: { type: String }
-}, { _id: false });
-
-const MatchSchema = new mongoose.Schema({
+const Match = sequelize.define('Match', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
   lobbyCode: {
-    type: String,
-    required: true,
-    index: true
+    type: DataTypes.STRING(10),
+    allowNull: false,
+    field: 'lobby_code'
   },
-  creator: {
-    id: String,
-    name: String
+  
+  // Создатель
+  creatorId: {
+    type: DataTypes.STRING(100),
+    field: 'creator_id'
   },
-  opponent: {
-    id: String,
-    name: String
+  creatorName: {
+    type: DataTypes.STRING(50),
+    field: 'creator_name'
   },
-  tournamentStage: {
-    type: String,
-    default: 'bo3'
+  
+  // Оппонент
+  opponentId: {
+    type: DataTypes.STRING(100),
+    field: 'opponent_id'
   },
-  // Выбранные фракции
+  opponentName: {
+    type: DataTypes.STRING(50),
+    field: 'opponent_name'
+  },
+  
+  // Формат
+  tournamentFormat: {
+    type: DataTypes.STRING(10),
+    defaultValue: 'bo3',
+    field: 'tournament_format'
+  },
+  
+  // Фракции (JSON массивы)
   creatorFactions: {
-    type: [String],
-    default: []
+    type: DataTypes.JSON,
+    defaultValue: [],
+    field: 'creator_factions'
   },
   opponentFactions: {
-    type: [String],
-    default: []
+    type: DataTypes.JSON,
+    defaultValue: [],
+    field: 'opponent_factions'
   },
-  // Забаненные фракции
-  creatorBannedFaction: String,
-  opponentBannedFaction: String,
+  
+  // Баны
+  creatorBannedFaction: {
+    type: DataTypes.STRING(50),
+    field: 'creator_banned_faction'
+  },
+  opponentBannedFaction: {
+    type: DataTypes.STRING(50),
+    field: 'opponent_banned_faction'
+  },
+  
   // Оставшиеся фракции
   creatorRemainingFactions: {
-    type: [String],
-    default: []
+    type: DataTypes.JSON,
+    defaultValue: [],
+    field: 'creator_remaining_factions'
   },
   opponentRemainingFactions: {
-    type: [String],
-    default: []
+    type: DataTypes.JSON,
+    defaultValue: [],
+    field: 'opponent_remaining_factions'
   },
-  // Результаты раундов
-  rounds: {
-    type: [RoundSchema],
-    default: []
-  },
-  // Итоговый победитель
+  
+  // Результат
   winner: {
-    type: String,
-    enum: ['creator', 'opponent', 'draw', null],
-    default: null
+    type: DataTypes.ENUM('creator', 'opponent', 'draw'),
+    allowNull: true
   },
+  
   // Счет
-  score: {
-    creator: { type: Number, default: 0 },
-    opponent: { type: Number, default: 0 }
+  scoreCreator: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    field: 'score_creator'
   },
-  // Жеребьевка монеты
-  coinFlip: {
-    creatorCoin: { type: String, enum: ['blue', 'red'] },
-    opponentCoin: { type: String, enum: ['blue', 'red'] }
+  scoreOpponent: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    field: 'score_opponent'
   },
+  
   // Время завершения
   completedAt: {
-    type: Date,
-    default: Date.now,
-    index: true
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
+    field: 'completed_at'
   }
 }, {
-  timestamps: true
+  tableName: 'matches',
+  timestamps: true,
+  createdAt: 'created_at',
+  updatedAt: 'updated_at',
+  indexes: [
+    { fields: ['lobby_code'] },
+    { fields: ['creator_id'] },
+    { fields: ['opponent_id'] },
+    { fields: ['completed_at'] }
+  ]
 });
 
-// Индексы для оптимизации запросов
-MatchSchema.index({ 'creator.id': 1, completedAt: -1 });
-MatchSchema.index({ 'opponent.id': 1, completedAt: -1 });
-MatchSchema.index({ completedAt: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 }); // TTL: 30 дней
-
-// Метод для добавления результата раунда
-MatchSchema.methods.addRoundResult = function(roundData) {
-  this.rounds.push({
-    roundNumber: this.rounds.length + 1,
-    ...roundData
+// Статический метод для получения истории игрока
+Match.getPlayerHistory = async function(playerId, limit = 10) {
+  return this.findAll({
+    where: {
+      [Op.or]: [
+        { creatorId: playerId },
+        { opponentId: playerId }
+      ]
+    },
+    order: [['completedAt', 'DESC']],
+    limit
   });
-  
-  // Обновляем счет
-  if (roundData.winner === 'creator') {
-    this.score.creator++;
-  } else if (roundData.winner === 'opponent') {
-    this.score.opponent++;
-  }
-  
-  return this;
 };
 
-// Статический метод для получения истории матчей игрока
-MatchSchema.statics.getPlayerHistory = async function(playerId, limit = 10) {
-  return this.find({
-    $or: [
-      { 'creator.id': playerId },
-      { 'opponent.id': playerId }
-    ]
-  })
-  .sort({ completedAt: -1 })
-  .limit(limit)
-  .lean();
-};
-
-module.exports = mongoose.model('Match', MatchSchema);
+module.exports = Match;

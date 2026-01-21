@@ -5,7 +5,7 @@ const FACTIONS = [
   { id: 'monsters', name: 'Монстры', icon: '👹' },
   { id: 'nilfgaard', name: 'Нильфгаард', icon: '☀️' },
   { id: 'northern', name: 'Северные Королевства', icon: '🦁' },
-  { id: 'scoiatael', name: 'Скоя\'таэли', icon: '🏹' },
+  { id: 'scoiatael', name: "Скоя'таэли", icon: '🏹' },
   { id: 'skellige', name: 'Скеллиге', icon: '⚓' },
   { id: 'syndicate', name: 'Синдикат', icon: '💰' }
 ];
@@ -541,7 +541,7 @@ const Renderer = {
         
         <div class="form-group">
           <label class="form-label">Код лобби</label>
-          <input type="text" class="form-input" id="lobby-code" placeholder="XXXX" maxlength="4" style="text-transform: uppercase; letter-spacing: 0.3em; text-align: center; font-size: 1.5rem;">
+          <input type="text" class="form-input" id="lobby-code" placeholder="GW1234" maxlength="6" style="text-transform: uppercase; letter-spacing: 0.3em; text-align: center; font-size: 1.5rem;">
         </div>
         
         <div class="action-buttons">
@@ -858,8 +858,8 @@ const Renderer = {
           Toast.error('Введите ваше имя');
           return;
         }
-        if (!code || code.length !== 4) {
-          Toast.error('Введите 4-значный код лобби');
+        if (!code || code.length < 4) {
+          Toast.error('Введите код лобби');
           return;
         }
         SocketManager.joinLobby(joinName, code);

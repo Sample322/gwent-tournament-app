@@ -21,7 +21,7 @@
   --transition-normal: 0.3s ease;
   --transition-slow: 0.5s ease;
   --font-display: 'Cinzel', serif;
-  --font-body: 'Cormorant Garaard', serif;
+  --font-body: 'Cormorant Garamond', serif;
   --font-ui: system-ui, -apple-system, sans-serif;
 }
 
@@ -521,13 +521,6 @@ p {
   color: var(--text-primary);
 }
 
-.faction-image {
-  width: 100%;
-  height: 70%;
-  object-fit: cover;
-  border-radius: 8px;
-}
-
 /* ===== Opponent Status ===== */
 .opponent-status {
   text-align: center;
@@ -715,6 +708,10 @@ p {
   animation: fade-in 0.2s ease;
 }
 
+.modal-overlay.hidden {
+  display: none;
+}
+
 .modal {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -734,37 +731,6 @@ p {
     transform: scale(1);
     opacity: 1;
   }
-}
-
-.modal-title {
-  margin-bottom: 1rem;
-}
-
-.modal-buttons {
-  display: flex;
-  gap: 1rem;
-  margin-top: 1.5rem;
-}
-
-/* ===== Loading Progress ===== */
-.loading-bar {
-  width: 100%;
-  height: 4px;
-  background: var(--bg-secondary);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.loading-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--accent-gold) 0%, var(--accent-gold-light) 100%);
-  animation: loading-progress 1.5s ease-in-out infinite;
-}
-
-@keyframes loading-progress {
-  0% { width: 0%; margin-left: 0; }
-  50% { width: 70%; margin-left: 0; }
-  100% { width: 0%; margin-left: 100%; }
 }
 
 /* ===== Format Selection ===== */
@@ -809,6 +775,52 @@ p {
 .format-desc {
   font-size: 0.85rem;
   color: var(--text-secondary);
+}
+
+/* ===== Confirmation Status ===== */
+.confirmation-status {
+  text-align: center;
+  padding: 1.5rem;
+  background: rgba(46, 204, 113, 0.1);
+  border: 1px solid var(--accent-green);
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  color: var(--accent-green);
+}
+
+/* ===== Action Buttons ===== */
+.action-buttons {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.action-buttons .btn {
+  flex: 1;
+}
+
+/* ===== Copy Button ===== */
+.copy-btn {
+  background: transparent;
+  border: none;
+  color: var(--accent-gold);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 4px;
+  transition: all var(--transition-fast);
+}
+
+.copy-btn:hover {
+  background: rgba(212, 175, 55, 0.1);
+}
+
+/* ===== Selection Counter ===== */
+.selection-counter {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  color: var(--accent-gold);
+  text-align: center;
+  margin-bottom: 1rem;
 }
 
 /* ===== Responsive ===== */
@@ -857,56 +869,4 @@ p {
   .btn {
     padding: 12px 20px;
   }
-}
-
-/* ===== Confirmation Status ===== */
-.confirmation-status {
-  text-align: center;
-  padding: 1.5rem;
-  background: rgba(46, 204, 113, 0.1);
-  border: 1px solid var(--accent-green);
-  border-radius: 8px;
-  margin-bottom: 1.5rem;
-  color: var(--accent-green);
-}
-
-.confirmation-status.waiting {
-  background: rgba(212, 175, 55, 0.1);
-  border-color: var(--accent-gold);
-  color: var(--accent-gold);
-}
-
-/* ===== Action Buttons ===== */
-.action-buttons {
-  display: flex;
-  gap: 1rem;
-  margin-top: 1.5rem;
-}
-
-.action-buttons .btn {
-  flex: 1;
-}
-
-/* ===== Copy Button ===== */
-.copy-btn {
-  background: transparent;
-  border: none;
-  color: var(--accent-gold);
-  cursor: pointer;
-  padding: 8px;
-  border-radius: 4px;
-  transition: all var(--transition-fast);
-}
-
-.copy-btn:hover {
-  background: rgba(212, 175, 55, 0.1);
-}
-
-/* ===== Selection Counter ===== */
-.selection-counter {
-  font-family: var(--font-display);
-  font-size: 1.2rem;
-  color: var(--accent-gold);
-  text-align: center;
-  margin-bottom: 1rem;
 }

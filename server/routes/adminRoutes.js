@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const mongoose = require('mongoose');
+const { Op } = require('sequelize');
+const { sequelize } = require('../config/database');
 const Lobby = require('../models/Lobby');
 const Match = require('../models/Match');
 
@@ -22,23 +23,19 @@ const checkApiKey = (req, res, next) => {
 // Публичный health check
 router.get('/health', async (req, res) => {
   try {
-    const mongoState = mongoose.connection.readyState;
-    const mongoStates = {
-      0: 'disconnected',
-      1: 'connected',
-      2: 'connecting',
-      3: 'disconnecting'
-    };
+    // Проверяем подключение к PostgreSQL
+    await sequelize.authenticate();
     
     res.json({
-      status: mongoState === 1 ? 'ok' : 'degraded',
+      status: 'ok',
       timestamp: new Date().toISOString(),
-      mongodb: mongoStates[mongoState] || 'unknown',
+      database: 'connected',
       uptime: Math.round(process.uptime())
     });
   } catch (error) {
     res.status(500).json({ 
       status: 'error',
+      database: 'disconnected',
       message: error.message
     });
   }
@@ -48,21 +45,28 @@ router.get('/health', async (req, res) => {
 router.get('/stats', checkApiKey, async (req, res) => {
   try {
     // Количество лобби по статусам
-    const statusCounts = await Lobby.aggregate([
-      { $group: { _id: '$status', count: { $sum: 1 } } }
-    ]);
+    const statusCounts = await Lobby.findAll({
+      attributes: [
+        'status',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      group: ['status'],
+      raw: true
+    });
     
     const statusMap = {};
     let totalLobbies = 0;
     statusCounts.forEach(item => {
-      statusMap[item._id] = item.count;
-      totalLobbies += item.count;
+      statusMap[item.status] = parseInt(item.count);
+      totalLobbies += parseInt(item.count);
     });
     
     // Количество матчей за последние 24 часа
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const recentMatches = await Match.countDocuments({
-      completedAt: { $gte: dayAgo }
+    const recentMatches = await Match.count({
+      where: {
+        completedAt: { [Op.gte]: dayAgo }
+      }
     });
     
     // Использование памяти
@@ -84,6 +88,7 @@ router.get('/stats', checkApiKey, async (req, res) => {
       },
       uptime: `${Math.round(process.uptime() / 60)} минут`,
       nodeVersion: process.version,
+      database: 'PostgreSQL',
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -97,16 +102,17 @@ router.get('/lobbies', checkApiKey, async (req, res) => {
   try {
     const { status, limit = 50 } = req.query;
     
-    const query = {};
+    const where = {};
     if (status) {
-      query.status = status;
+      where.status = status;
     }
     
-    const lobbies = await Lobby.find(query)
-      .sort({ lastActivity: -1 })
-      .limit(parseInt(limit))
-      .select('lobbyCode status tournamentFormat creator.name opponent.name lastActivity createdAt')
-      .lean();
+    const lobbies = await Lobby.findAll({
+      where,
+      order: [['lastActivity', 'DESC']],
+      limit: parseInt(limit),
+      attributes: ['lobbyCode', 'status', 'tournamentFormat', 'creatorName', 'opponentName', 'lastActivity', 'created_at']
+    });
     
     res.json({
       count: lobbies.length,
@@ -123,14 +129,14 @@ router.get('/lobbies/:lobbyCode', checkApiKey, async (req, res) => {
   try {
     const { lobbyCode } = req.params;
     const lobby = await Lobby.findOne({ 
-      lobbyCode: lobbyCode.toUpperCase() 
-    }).lean();
+      where: { lobbyCode: lobbyCode.toUpperCase() }
+    });
     
     if (!lobby) {
       return res.status(404).json({ error: 'Лобби не найдено' });
     }
     
-    res.json(lobby);
+    res.json(lobby.toAPIFormat());
   } catch (error) {
     console.error('❌ Ошибка получения информации о лобби:', error);
     res.status(500).json({ error: 'Ошибка получения информации о лобби' });
@@ -149,15 +155,17 @@ router.post('/cleanup', checkApiKey, async (req, res) => {
     
     const cutoffTime = new Date(Date.now() - hoursNum * 60 * 60 * 1000);
     
-    const result = await Lobby.deleteMany({ 
-      lastActivity: { $lt: cutoffTime }
+    const result = await Lobby.destroy({ 
+      where: {
+        lastActivity: { [Op.lt]: cutoffTime }
+      }
     });
     
-    console.log(`🧹 Очистка: удалено ${result.deletedCount} лобби старше ${hoursNum} часов`);
+    console.log(`🧹 Очистка: удалено ${result} лобби старше ${hoursNum} часов`);
     
     res.json({ 
       message: 'Очистка завершена',
-      removed: result.deletedCount,
+      removed: result,
       cutoffTime: cutoffTime.toISOString()
     });
   } catch (error) {
@@ -171,11 +179,11 @@ router.delete('/lobbies/:lobbyCode', checkApiKey, async (req, res) => {
   try {
     const { lobbyCode } = req.params;
     
-    const result = await Lobby.deleteOne({ 
-      lobbyCode: lobbyCode.toUpperCase() 
+    const result = await Lobby.destroy({ 
+      where: { lobbyCode: lobbyCode.toUpperCase() }
     });
     
-    if (result.deletedCount === 0) {
+    if (result === 0) {
       return res.status(404).json({ error: 'Лобби не найдено' });
     }
     
@@ -193,18 +201,19 @@ router.get('/matches', checkApiKey, async (req, res) => {
   try {
     const { limit = 50, playerId } = req.query;
     
-    const query = {};
+    const where = {};
     if (playerId) {
-      query.$or = [
-        { 'creator.id': playerId },
-        { 'opponent.id': playerId }
+      where[Op.or] = [
+        { creatorId: playerId },
+        { opponentId: playerId }
       ];
     }
     
-    const matches = await Match.find(query)
-      .sort({ completedAt: -1 })
-      .limit(parseInt(limit))
-      .lean();
+    const matches = await Match.findAll({
+      where,
+      order: [['completedAt', 'DESC']],
+      limit: parseInt(limit)
+    });
     
     res.json({
       count: matches.length,
