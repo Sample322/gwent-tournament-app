@@ -3,18 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1a1a2e">
+    <meta name="description" content="Турнирное приложение для игры Gwent">
+    
     <title>Турнир по Гвинту</title>
+    
+    <!-- Preconnect для оптимизации -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <!-- Шрифты -->
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cormorant+Garamond:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Стили -->
     <link rel="stylesheet" href="styles.css">
-    <!-- Подключение Telegram Mini Apps SDK -->
+    
+    <!-- Telegram Mini Apps SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <!-- Подключение Socket.IO клиента -->
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    
+    <!-- Socket.IO клиент -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 </head>
 <body>
-    <div id="app">
-        <!-- Контент будет динамически рендериться через JavaScript -->
+    <!-- Анимированный фон -->
+    <div class="animated-background">
+        <div class="bg-gradient"></div>
+        <div class="bg-particles"></div>
+        <div class="bg-noise"></div>
     </div>
-    <!-- Важно: имя файла должно совпадать с тем, что указано в HTML -->
+    
+    <!-- Основной контейнер приложения -->
+    <div id="app" class="app-container">
+        <!-- Контент будет динамически рендериться через JavaScript -->
+        <div class="loading-screen">
+            <div class="loading-logo">
+                <svg viewBox="0 0 100 100" class="loading-icon">
+                    <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+                    <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" stroke-width="2" 
+                            stroke-dasharray="280" stroke-dashoffset="280" class="loading-circle"/>
+                </svg>
+            </div>
+            <p class="loading-text">Загрузка...</p>
+        </div>
+    </div>
+    
+    <!-- Контейнер для уведомлений -->
+    <div id="toast-container"></div>
+    
+    <!-- Модальное окно -->
+    <div id="modal-overlay" class="modal-overlay hidden">
+        <div id="modal-content" class="modal-content"></div>
+    </div>
+    
+    <!-- Основной скрипт -->
     <script src="app.js"></script>
 </body>
 </html>

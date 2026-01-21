@@ -2,37 +2,80 @@ const Lobby = require('../models/Lobby');
 const Match = require('../models/Match');
 
 module.exports = (io) => {
-  // Отслеживаем комнаты для таймеров банов
+  // Отслеживаем комнаты для таймеров банов и выбора
   const banTimers = {};
+  const selectionTimers = {};
+  
   // Отслеживаем подключения игроков
   const playerConnections = new Map();
   
-  // Функция очистки ресурсов
-  function cleanupResources(lobbyCode) {
-    // Очистка таймеров при удалении лобби
+  // Отслеживаем состояние выбора игроков (in-memory для быстродействия)
+  // Структура: { lobbyCode: { playerId: { selections: [], confirmed: false, phase: 'selecting'|'banning' } } }
+  const playerSelectionState = new Map();
+  
+  // Константы таймеров
+  const SELECTION_TIMEOUT = 300000; // 5 минут на выбор фракций
+  const BAN_TIMEOUT = 180000; // 3 минуты на бан
+  
+  // Функция очистки ресурсов лобби
+  function cleanupLobbyResources(lobbyCode) {
     if (banTimers[lobbyCode]) {
       clearTimeout(banTimers[lobbyCode]);
       delete banTimers[lobbyCode];
-      console.log(`Ресурсы лобби ${lobbyCode} очищены`);
     }
+    if (selectionTimers[lobbyCode]) {
+      clearTimeout(selectionTimers[lobbyCode]);
+      delete selectionTimers[lobbyCode];
+    }
+    playerSelectionState.delete(lobbyCode);
+    console.log(`🧹 Ресурсы лобби ${lobbyCode} очищены`);
   }
   
+  // Инициализация состояния выбора для лобби
+  function initSelectionState(lobbyCode) {
+    if (!playerSelectionState.has(lobbyCode)) {
+      playerSelectionState.set(lobbyCode, {});
+    }
+    return playerSelectionState.get(lobbyCode);
+  }
+  
+  // Получение состояния игрока
+  function getPlayerState(lobbyCode, playerId) {
+    const lobbyState = initSelectionState(lobbyCode);
+    if (!lobbyState[playerId]) {
+      lobbyState[playerId] = {
+        selections: [],
+        bannedFaction: null,
+        selectionConfirmed: false,
+        banConfirmed: false,
+        phase: 'waiting'
+      };
+    }
+    return lobbyState[playerId];
+  }
+  
+  // Heartbeat для отслеживания активных соединений
+  setInterval(() => {
+    io.emit('heartbeat', { timestamp: Date.now() });
+  }, 30000);
+  
   io.on('connection', (socket) => {
-    console.log('Новое подключение:', socket.id);
+    console.log('🔌 Новое подключение:', socket.id);
     
     // Присоединение к комнате лобби
     socket.on('join-lobby', async ({ lobbyCode, playerId, playerName }) => {
-      socket.join(lobbyCode);
-      console.log(`Игрок ${playerId} (${playerName}) присоединился к лобби ${lobbyCode}`);
-      
-      // Сохраняем информацию о соединении игрока
-      playerConnections.set(socket.id, { lobbyCode, playerId });
-      
-      // Обновление лобби в базе данных
       try {
+        socket.join(lobbyCode);
+        console.log(`👤 Игрок ${playerId} (${playerName}) присоединился к лобби ${lobbyCode}`);
+        
+        // Сохраняем информацию о соединении игрока
+        playerConnections.set(socket.id, { lobbyCode, playerId, playerName });
+        
+        // Инициализируем состояние игрока
+        getPlayerState(lobbyCode, playerId);
+        
         const lobby = await Lobby.findOne({ lobbyCode });
         if (lobby) {
-          // Обновляем lastActivity
           lobby.lastActivity = new Date();
           await lobby.save();
           
@@ -40,12 +83,15 @@ module.exports = (io) => {
           io.to(lobbyCode).emit('player-joined', { 
             playerId, 
             playerName, 
-            isCreator: lobby.creator.id === playerId 
+            isCreator: lobby.creator && lobby.creator.id === playerId 
           });
+          
+          // Отправляем текущее состояние лобби
           io.to(lobbyCode).emit('lobby-update', lobby);
         }
       } catch (error) {
-        console.error('Ошибка при присоединении к лобби:', error);
+        console.error('❌ Ошибка при присоединении к лобби:', error);
+        socket.emit('error', { message: 'Ошибка при присоединении к лобби' });
       }
     });
     
@@ -53,137 +99,227 @@ module.exports = (io) => {
     socket.on('start-faction-selection', async ({ lobbyCode }) => {
       try {
         const lobby = await Lobby.findOne({ lobbyCode });
-        if (!lobby) return;
+        if (!lobby) {
+          socket.emit('error', { message: 'Лобби не найдено' });
+          return;
+        }
+        
+        // Сбрасываем состояние выбора
+        const lobbyState = initSelectionState(lobbyCode);
+        if (lobby.creator?.id) {
+          lobbyState[lobby.creator.id] = {
+            selections: [],
+            bannedFaction: null,
+            selectionConfirmed: false,
+            banConfirmed: false,
+            phase: 'selecting'
+          };
+        }
+        if (lobby.opponent?.id) {
+          lobbyState[lobby.opponent.id] = {
+            selections: [],
+            bannedFaction: null,
+            selectionConfirmed: false,
+            banConfirmed: false,
+            phase: 'selecting'
+          };
+        }
         
         lobby.status = 'selecting-factions';
-        lobby.lastActivity = new Date(); // Обновление времени активности
+        lobby.creatorSelectedFactions = [];
+        lobby.opponentSelectedFactions = [];
+        lobby.lastActivity = new Date();
         await lobby.save();
         
         io.to(lobbyCode).emit('faction-selection-started', { lobbyCode });
         io.to(lobbyCode).emit('lobby-update', lobby);
+        
+        // Запускаем таймер на выбор фракций
+        if (selectionTimers[lobbyCode]) {
+          clearTimeout(selectionTimers[lobbyCode]);
+        }
+        
+        selectionTimers[lobbyCode] = setTimeout(async () => {
+          await handleSelectionTimeout(lobbyCode);
+        }, SELECTION_TIMEOUT);
+        
+        console.log(`🎮 Фаза выбора фракций начата для лобби ${lobbyCode}`);
       } catch (error) {
-        console.error('Ошибка запуска выбора фракций:', error);
+        console.error('❌ Ошибка запуска выбора фракций:', error);
+        socket.emit('error', { message: 'Ошибка запуска выбора фракций' });
       }
     });
     
-    // Обработка статуса выбора игрока
-    socket.on('player-selection-status', ({ lobbyCode, playerId, status, phase }) => {
-      // Передаем статус всем в лобби
-      socket.to(lobbyCode).emit('player-selection-status', { playerId, status, phase });
-      
-      // Обновляем время активности лобби
-      updateLobbyActivity(lobbyCode);
+    // Сохранение прогресса выбора (без подтверждения) - КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
+    socket.on('save-selection-progress', ({ lobbyCode, playerId, selections, phase }) => {
+      try {
+        const playerState = getPlayerState(lobbyCode, playerId);
+        
+        // Сохраняем прогресс только если не подтверждено
+        if (phase === 'selecting' && !playerState.selectionConfirmed) {
+          playerState.selections = selections;
+        } else if (phase === 'banning' && !playerState.banConfirmed) {
+          playerState.bannedFaction = selections[0] || null;
+        }
+        
+        // Отправляем оппоненту информацию о прогрессе (для индикатора активности)
+        socket.to(lobbyCode).emit('opponent-selection-progress', {
+          playerId,
+          phase,
+          selectionsCount: selections.length,
+          hasSelection: selections.length > 0
+        });
+      } catch (error) {
+        console.error('❌ Ошибка сохранения прогресса:', error);
+      }
     });
     
-    // Подтверждение выбора фракций
+    // Подтверждение выбора фракций - ПОЛНОСТЬЮ ПЕРЕРАБОТАНО
     socket.on('confirm-faction-selection', async ({ lobbyCode, playerId, selectedFactions }) => {
       try {
+        console.log(`✅ Игрок ${playerId} подтверждает выбор в лобби ${lobbyCode}:`, selectedFactions);
+        
         const lobby = await Lobby.findOne({ lobbyCode });
-        if (!lobby) return;
+        if (!lobby) {
+          socket.emit('error', { message: 'Лобби не найдено' });
+          return;
+        }
         
-        // Определяем, создатель или оппонент
-        const isCreator = playerId === lobby.creator.id;
+        // Обновляем состояние игрока
+        const playerState = getPlayerState(lobbyCode, playerId);
+        playerState.selections = selectedFactions;
+        playerState.selectionConfirmed = true;
+        playerState.phase = 'selecting-confirmed';
         
+        const isCreator = playerId === lobby.creator?.id;
+        
+        // Сохраняем в базу
         if (isCreator) {
           lobby.creatorSelectedFactions = selectedFactions;
         } else {
           lobby.opponentSelectedFactions = selectedFactions;
         }
-        
-        // Обновляем время активности
         lobby.lastActivity = new Date();
         
-        // Отправляем информацию о выборе всем в лобби
-        socket.to(lobbyCode).emit('opponent-factions-selected', { 
+        // Отправляем подтверждение отправителю
+        socket.emit('selection-confirmed', { 
           playerId, 
-          selectedFactions 
+          phase: 'selecting',
+          success: true 
         });
         
-        // Если обе стороны выбрали фракции, переходим к фазе банов
-        if (lobby.creatorSelectedFactions.length > 0 && 
-            lobby.opponentSelectedFactions.length > 0 && 
-            lobby.creatorSelectedFactions.length === lobby.opponentSelectedFactions.length) {
-          lobby.status = 'banning';
+        // Оповещаем оппонента о завершении выбора (без деталей фракций до перехода к бану)
+        socket.to(lobbyCode).emit('player-selection-status', { 
+          playerId, 
+          status: 'completed', 
+          phase: 'selecting-factions'
+        });
+        
+        // Проверяем, оба ли игрока подтвердили выбор
+        const creatorState = getPlayerState(lobbyCode, lobby.creator?.id);
+        const opponentState = getPlayerState(lobbyCode, lobby.opponent?.id);
+        
+        const bothConfirmed = creatorState?.selectionConfirmed && opponentState?.selectionConfirmed;
+        
+        console.log(`📊 Статус подтверждений в ${lobbyCode}: Creator=${creatorState?.selectionConfirmed}, Opponent=${opponentState?.selectionConfirmed}`);
+        
+        if (bothConfirmed && 
+            lobby.creatorSelectedFactions.length > 0 && 
+            lobby.opponentSelectedFactions.length > 0) {
           
-          // Запускаем таймер бана (3 минуты)
-          if (banTimers[lobbyCode]) {
-            clearTimeout(banTimers[lobbyCode]);
+          // Очищаем таймер выбора
+          if (selectionTimers[lobbyCode]) {
+            clearTimeout(selectionTimers[lobbyCode]);
+            delete selectionTimers[lobbyCode];
           }
           
-          banTimers[lobbyCode] = setTimeout(async () => {
-            try {
-              // Если время истекло, выбираем случайные баны
-              const updatedLobby = await Lobby.findOne({ lobbyCode });
-              
-              if (updatedLobby && updatedLobby.status === 'banning') {
-                if (!updatedLobby.creatorBannedFaction) {
-                  updatedLobby.creatorBannedFaction = updatedLobby.opponentSelectedFactions[Math.floor(Math.random() * updatedLobby.opponentSelectedFactions.length)];
-                }
-                
-                if (!updatedLobby.opponentBannedFaction) {
-                  updatedLobby.opponentBannedFaction = updatedLobby.creatorSelectedFactions[Math.floor(Math.random() * updatedLobby.creatorSelectedFactions.length)];
-                }
-                
-                // Рассчитываем оставшиеся фракции
-                updatedLobby.creatorRemainingFactions = updatedLobby.creatorSelectedFactions.filter(
-                  faction => faction !== updatedLobby.opponentBannedFaction
-                );
-                
-                updatedLobby.opponentRemainingFactions = updatedLobby.opponentSelectedFactions.filter(
-                  faction => faction !== updatedLobby.creatorBannedFaction
-                );
-                
-                updatedLobby.status = 'match-results';
-                updatedLobby.lastActivity = new Date(); // Обновление времени активности
-                
-                await updatedLobby.save();
-                
-                io.to(lobbyCode).emit('ban-timer-expired');
-                io.to(lobbyCode).emit('lobby-update', updatedLobby);
-              }
-              
-              delete banTimers[lobbyCode];
-            } catch (error) {
-              console.error('Ошибка в обработке таймера бана:', error);
-              delete banTimers[lobbyCode];
-            }
-          }, 180000); // 3 минуты
+          // Переходим к фазе банов
+          lobby.status = 'banning';
+          
+          // Сбрасываем состояния бана
+          if (creatorState) {
+            creatorState.banConfirmed = false;
+            creatorState.bannedFaction = null;
+            creatorState.phase = 'banning';
+          }
+          if (opponentState) {
+            opponentState.banConfirmed = false;
+            opponentState.bannedFaction = null;
+            opponentState.phase = 'banning';
+          }
+          
+          await lobby.save();
+          
+          console.log(`🚫 Переход к фазе банов в лобби ${lobbyCode}`);
+          
+          // Оповещаем всех о переходе к фазе банов
+          io.to(lobbyCode).emit('lobby-update', lobby);
+          io.to(lobbyCode).emit('phase-changed', { phase: 'banning' });
+          
+          // Запускаем таймер бана
+          startBanTimer(lobbyCode);
+        } else {
+          await lobby.save();
+          // Отправляем обновление только отправителю (не затрагивая UI оппонента)
+          socket.emit('lobby-update', lobby);
         }
-        
-        await lobby.save();
-        io.to(lobbyCode).emit('lobby-update', lobby);
       } catch (error) {
-        console.error('Ошибка подтверждения выбора фракций:', error);
+        console.error('❌ Ошибка подтверждения выбора фракций:', error);
+        socket.emit('error', { message: 'Ошибка подтверждения выбора' });
       }
     });
     
-    // Подтверждение бана фракции
+    // Подтверждение бана фракции - ПОЛНОСТЬЮ ПЕРЕРАБОТАНО
     socket.on('confirm-faction-ban', async ({ lobbyCode, playerId, bannedFaction }) => {
       try {
+        console.log(`🚫 Игрок ${playerId} банит фракцию в лобби ${lobbyCode}:`, bannedFaction);
+        
         const lobby = await Lobby.findOne({ lobbyCode });
-        if (!lobby) return;
+        if (!lobby) {
+          socket.emit('error', { message: 'Лобби не найдено' });
+          return;
+        }
         
-        // Определяем, создатель или оппонент
-        const isCreator = playerId === lobby.creator.id;
+        // Обновляем состояние игрока
+        const playerState = getPlayerState(lobbyCode, playerId);
+        playerState.bannedFaction = bannedFaction;
+        playerState.banConfirmed = true;
+        playerState.phase = 'banning-confirmed';
         
+        const isCreator = playerId === lobby.creator?.id;
+        
+        // Сохраняем в базу
         if (isCreator) {
           lobby.creatorBannedFaction = bannedFaction;
         } else {
           lobby.opponentBannedFaction = bannedFaction;
         }
-        
-        // Обновляем время активности
         lobby.lastActivity = new Date();
         
-        // Отправляем информацию о бане всем в лобби
-        socket.to(lobbyCode).emit('opponent-faction-banned', { 
+        // Отправляем подтверждение отправителю
+        socket.emit('ban-confirmed', { 
           playerId, 
-          bannedFaction 
+          phase: 'banning',
+          success: true 
         });
         
-        // Если обе стороны выбрали баны, заканчиваем фазу банов
-        if (lobby.creatorBannedFaction && lobby.opponentBannedFaction) {
-          // Отменяем таймер бана
+        // Оповещаем оппонента
+        socket.to(lobbyCode).emit('player-selection-status', { 
+          playerId, 
+          status: 'completed', 
+          phase: 'ban-phase'
+        });
+        
+        // Проверяем, оба ли игрока забанили
+        const creatorState = getPlayerState(lobbyCode, lobby.creator?.id);
+        const opponentState = getPlayerState(lobbyCode, lobby.opponent?.id);
+        
+        const bothBanned = creatorState?.banConfirmed && opponentState?.banConfirmed;
+        
+        console.log(`📊 Статус банов в ${lobbyCode}: Creator=${creatorState?.banConfirmed}, Opponent=${opponentState?.banConfirmed}`);
+        
+        if (bothBanned && lobby.creatorBannedFaction && lobby.opponentBannedFaction) {
+          // Очищаем таймер бана
           if (banTimers[lobbyCode]) {
             clearTimeout(banTimers[lobbyCode]);
             delete banTimers[lobbyCode];
@@ -193,23 +329,30 @@ module.exports = (io) => {
           lobby.creatorRemainingFactions = lobby.creatorSelectedFactions.filter(
             faction => faction !== lobby.opponentBannedFaction
           );
-          
           lobby.opponentRemainingFactions = lobby.opponentSelectedFactions.filter(
             faction => faction !== lobby.creatorBannedFaction
           );
           
           lobby.status = 'match-results';
-        }
-        
-        await lobby.save();
-        io.to(lobbyCode).emit('lobby-update', lobby);
-        
-        if (lobby.status === 'match-results') {
+          await lobby.save();
+          
+          console.log(`🏆 Матч завершен в лобби ${lobbyCode}`);
+          
+          io.to(lobbyCode).emit('lobby-update', lobby);
           io.to(lobbyCode).emit('ban-phase-ended', { timeExpired: false });
+        } else {
+          await lobby.save();
+          socket.emit('lobby-update', lobby);
         }
       } catch (error) {
-        console.error('Ошибка подтверждения бана фракции:', error);
+        console.error('❌ Ошибка подтверждения бана фракции:', error);
+        socket.emit('error', { message: 'Ошибка подтверждения бана' });
       }
+    });
+    
+    // Обработка статуса выбора игрока (для UI индикаторов)
+    socket.on('player-selection-status', ({ lobbyCode, playerId, status, phase }) => {
+      socket.to(lobbyCode).emit('player-selection-status', { playerId, status, phase });
     });
     
     // Сброс лобби для новой игры
@@ -220,23 +363,51 @@ module.exports = (io) => {
         
         // Сохраняем завершенный матч в истории
         if (lobby.status === 'match-results') {
-          const match = new Match({
-            lobbyCode: lobby.lobbyCode,
-            creator: lobby.creator,
-            opponent: lobby.opponent,
-            tournamentStage: lobby.tournamentStage,
-            creatorFactions: lobby.creatorSelectedFactions,
-            opponentFactions: lobby.opponentSelectedFactions,
-            creatorBannedFaction: lobby.creatorBannedFaction,
-            opponentBannedFaction: lobby.opponentBannedFaction,
-            rounds: [],
-            completedAt: new Date()
-          });
-          
-          await match.save();
+          try {
+            const match = new Match({
+              lobbyCode: lobby.lobbyCode,
+              creator: lobby.creator,
+              opponent: lobby.opponent,
+              tournamentStage: lobby.tournamentFormat,
+              creatorFactions: lobby.creatorSelectedFactions,
+              opponentFactions: lobby.opponentSelectedFactions,
+              creatorBannedFaction: lobby.creatorBannedFaction,
+              opponentBannedFaction: lobby.opponentBannedFaction,
+              rounds: [],
+              completedAt: new Date()
+            });
+            await match.save();
+            console.log(`📝 Матч сохранен для лобби ${lobbyCode}`);
+          } catch (err) {
+            console.error('❌ Ошибка сохранения матча:', err);
+          }
         }
         
-        // Сбрасываем данные лобби для новой игры
+        // Очищаем все состояния
+        cleanupLobbyResources(lobbyCode);
+        
+        // Инициализируем новое состояние
+        const lobbyState = initSelectionState(lobbyCode);
+        if (lobby.creator?.id) {
+          lobbyState[lobby.creator.id] = {
+            selections: [],
+            bannedFaction: null,
+            selectionConfirmed: false,
+            banConfirmed: false,
+            phase: 'waiting'
+          };
+        }
+        if (lobby.opponent?.id) {
+          lobbyState[lobby.opponent.id] = {
+            selections: [],
+            bannedFaction: null,
+            selectionConfirmed: false,
+            banConfirmed: false,
+            phase: 'waiting'
+          };
+        }
+        
+        // Сбрасываем данные лобби
         lobby.creatorSelectedFactions = [];
         lobby.opponentSelectedFactions = [];
         lobby.creatorBannedFaction = null;
@@ -244,46 +415,181 @@ module.exports = (io) => {
         lobby.creatorRemainingFactions = [];
         lobby.opponentRemainingFactions = [];
         lobby.status = 'waiting';
-        lobby.lastActivity = new Date(); // Обновление времени активности
+        lobby.lastActivity = new Date();
         
         await lobby.save();
+        
+        console.log(`🔄 Лобби ${lobbyCode} сброшено для новой игры`);
+        io.to(lobbyCode).emit('lobby-reset', { lobbyCode });
         io.to(lobbyCode).emit('lobby-update', lobby);
       } catch (error) {
-        console.error('Ошибка сброса лобби:', error);
+        console.error('❌ Ошибка сброса лобби:', error);
+        socket.emit('error', { message: 'Ошибка сброса лобби' });
       }
     });
     
     // Отключение от сервера
-    socket.on('disconnect', () => {
-      console.log('Отключение:', socket.id);
+    socket.on('disconnect', async () => {
+      console.log('🔌 Отключение:', socket.id);
       
-      // Очистка ресурсов и ссылок
-      if (playerConnections.has(socket.id)) {
-        const { lobbyCode } = playerConnections.get(socket.id);
+      const connectionInfo = playerConnections.get(socket.id);
+      if (connectionInfo) {
+        const { lobbyCode, playerId } = connectionInfo;
         playerConnections.delete(socket.id);
         
+        // Оповещаем оппонента об отключении
+        socket.to(lobbyCode).emit('player-disconnected', { playerId });
+        
         // Проверяем, остались ли игроки в лобби
-        io.in(lobbyCode).allSockets().then(clients => {
+        try {
+          const clients = await io.in(lobbyCode).allSockets();
           if (clients.size === 0) {
-            console.log(`Последний игрок покинул лобби ${lobbyCode}, очистка ресурсов`);
-            cleanupResources(lobbyCode);
+            console.log(`🏚️ Последний игрок покинул лобби ${lobbyCode}`);
+            cleanupLobbyResources(lobbyCode);
           }
-        }).catch(err => {
-          console.error('Ошибка при проверке активных клиентов:', err);
+        } catch (err) {
+          console.error('❌ Ошибка при проверке активных клиентов:', err);
+        }
+      }
+    });
+    
+    // Переподключение игрока
+    socket.on('reconnect-player', async ({ lobbyCode, playerId }) => {
+      try {
+        const lobby = await Lobby.findOne({ lobbyCode });
+        if (!lobby) {
+          socket.emit('error', { message: 'Лобби не найдено' });
+          return;
+        }
+        
+        socket.join(lobbyCode);
+        playerConnections.set(socket.id, { lobbyCode, playerId });
+        
+        // Восстанавливаем состояние игрока
+        const playerState = getPlayerState(lobbyCode, playerId);
+        
+        socket.emit('reconnect-success', {
+          lobby,
+          playerState: {
+            selections: playerState.selections,
+            bannedFaction: playerState.bannedFaction,
+            selectionConfirmed: playerState.selectionConfirmed,
+            banConfirmed: playerState.banConfirmed,
+            phase: playerState.phase
+          }
         });
+        
+        socket.to(lobbyCode).emit('player-reconnected', { playerId });
+        
+        console.log(`🔄 Игрок ${playerId} переподключился к лобби ${lobbyCode}`);
+      } catch (error) {
+        console.error('❌ Ошибка переподключения:', error);
+        socket.emit('error', { message: 'Ошибка переподключения' });
       }
     });
   });
   
-  // Вспомогательная функция для обновления времени последней активности лобби
-  async function updateLobbyActivity(lobbyCode) {
+  // Запуск таймера бана
+  function startBanTimer(lobbyCode) {
+    if (banTimers[lobbyCode]) {
+      clearTimeout(banTimers[lobbyCode]);
+    }
+    
+    banTimers[lobbyCode] = setTimeout(async () => {
+      await handleBanTimeout(lobbyCode);
+    }, BAN_TIMEOUT);
+    
+    console.log(`⏱️ Таймер бана запущен для лобби ${lobbyCode} (${BAN_TIMEOUT/1000} сек)`);
+  }
+  
+  // Обработка таймаута выбора фракций
+  async function handleSelectionTimeout(lobbyCode) {
     try {
-      await Lobby.updateOne(
-        { lobbyCode },
-        { $set: { lastActivity: new Date() } }
-      );
+      console.log(`⏰ Таймаут выбора фракций в лобби ${lobbyCode}`);
+      
+      const lobby = await Lobby.findOne({ lobbyCode });
+      if (!lobby || lobby.status !== 'selecting-factions') return;
+      
+      const gwentFactions = ['northern-realms', 'nilfgaard', 'monsters', 'scoia-tael', 'skellige', 'syndicate'];
+      const requiredCount = lobby.tournamentFormat === 'bo5' ? 4 : 3;
+      
+      // Автовыбор для игроков, которые не выбрали
+      if (lobby.creatorSelectedFactions.length < requiredCount) {
+        const available = gwentFactions.filter(f => !lobby.creatorSelectedFactions.includes(f));
+        while (lobby.creatorSelectedFactions.length < requiredCount && available.length > 0) {
+          const randomIndex = Math.floor(Math.random() * available.length);
+          lobby.creatorSelectedFactions.push(available.splice(randomIndex, 1)[0]);
+        }
+        console.log(`🤖 Автовыбор для создателя в ${lobbyCode}:`, lobby.creatorSelectedFactions);
+      }
+      
+      if (lobby.opponentSelectedFactions.length < requiredCount) {
+        const available = gwentFactions.filter(f => !lobby.opponentSelectedFactions.includes(f));
+        while (lobby.opponentSelectedFactions.length < requiredCount && available.length > 0) {
+          const randomIndex = Math.floor(Math.random() * available.length);
+          lobby.opponentSelectedFactions.push(available.splice(randomIndex, 1)[0]);
+        }
+        console.log(`🤖 Автовыбор для оппонента в ${lobbyCode}:`, lobby.opponentSelectedFactions);
+      }
+      
+      lobby.status = 'banning';
+      lobby.lastActivity = new Date();
+      await lobby.save();
+      
+      delete selectionTimers[lobbyCode];
+      
+      io.to(lobbyCode).emit('selection-timer-expired');
+      io.to(lobbyCode).emit('lobby-update', lobby);
+      io.to(lobbyCode).emit('phase-changed', { phase: 'banning' });
+      
+      startBanTimer(lobbyCode);
     } catch (error) {
-      console.error('Ошибка обновления времени активности лобби:', error);
+      console.error('❌ Ошибка в handleSelectionTimeout:', error);
+    }
+  }
+  
+  // Обработка таймаута бана
+  async function handleBanTimeout(lobbyCode) {
+    try {
+      console.log(`⏰ Таймаут бана в лобби ${lobbyCode}`);
+      
+      const lobby = await Lobby.findOne({ lobbyCode });
+      if (!lobby || lobby.status !== 'banning') return;
+      
+      // Автовыбор банов
+      if (!lobby.creatorBannedFaction && lobby.opponentSelectedFactions.length > 0) {
+        const randomIndex = Math.floor(Math.random() * lobby.opponentSelectedFactions.length);
+        lobby.creatorBannedFaction = lobby.opponentSelectedFactions[randomIndex];
+        console.log(`🤖 Автобан для создателя в ${lobbyCode}:`, lobby.creatorBannedFaction);
+      }
+      
+      if (!lobby.opponentBannedFaction && lobby.creatorSelectedFactions.length > 0) {
+        const randomIndex = Math.floor(Math.random() * lobby.creatorSelectedFactions.length);
+        lobby.opponentBannedFaction = lobby.creatorSelectedFactions[randomIndex];
+        console.log(`🤖 Автобан для оппонента в ${lobbyCode}:`, lobby.opponentBannedFaction);
+      }
+      
+      // Рассчитываем оставшиеся фракции
+      lobby.creatorRemainingFactions = lobby.creatorSelectedFactions.filter(
+        faction => faction !== lobby.opponentBannedFaction
+      );
+      lobby.opponentRemainingFactions = lobby.opponentSelectedFactions.filter(
+        faction => faction !== lobby.creatorBannedFaction
+      );
+      
+      lobby.status = 'match-results';
+      lobby.lastActivity = new Date();
+      await lobby.save();
+      
+      delete banTimers[lobbyCode];
+      
+      io.to(lobbyCode).emit('ban-timer-expired');
+      io.to(lobbyCode).emit('lobby-update', lobby);
+      io.to(lobbyCode).emit('ban-phase-ended', { timeExpired: true });
+      
+      console.log(`🏆 Матч завершен (таймаут) в лобби ${lobbyCode}`);
+    } catch (error) {
+      console.error('❌ Ошибка в handleBanTimeout:', error);
     }
   }
 };

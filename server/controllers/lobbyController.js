@@ -1,91 +1,104 @@
 const Lobby = require('../models/Lobby');
 
+// Доступные символы для генерации кода (без похожих символов)
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
 // Генерация уникального кода лобби
 const generateLobbyCode = () => {
-  const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let result = 'GW';
   for (let i = 0; i < 4; i++) {
-    result += characters.charAt(Math.floor(Math.random() * characters.length));
+    result += CODE_CHARS.charAt(Math.floor(Math.random() * CODE_CHARS.length));
   }
   return result;
+};
+
+// Валидация данных создателя
+const validateCreatorData = (creator) => {
+  if (!creator || !creator.id) {
+    return { valid: false, message: 'ID игрока обязателен' };
+  }
+  if (typeof creator.id !== 'string' || creator.id.length > 100) {
+    return { valid: false, message: 'Некорректный ID игрока' };
+  }
+  return { valid: true };
 };
 
 // Создание нового лобби
 exports.createLobby = async (req, res) => {
   try {
     const { creator, tournamentFormat } = req.body;
-    let { lobbyCode } = req.body;
     
-    console.log(`Попытка создания лобби:`, { creator, tournamentFormat, lobbyCode });
+    // Валидация входных данных
+    const validation = validateCreatorData(creator);
+    if (!validation.valid) {
+      return res.status(400).json({ message: validation.message });
+    }
     
-    // Проверка количества активных лобби
+    // Проверка формата турнира
+    if (tournamentFormat && !['bo3', 'bo5'].includes(tournamentFormat)) {
+      return res.status(400).json({ message: 'Некорректный формат турнира' });
+    }
+    
+    // Проверка количества активных лобби (защита от спама)
     const activeLobbiesCount = await Lobby.countDocuments();
-    if (activeLobbiesCount >= 40) { // Лимит 40 лобби для безопасности
+    if (activeLobbiesCount >= 100) {
       return res.status(429).json({ 
         message: 'Достигнут лимит активных лобби. Пожалуйста, попробуйте позже.' 
       });
     }
     
-    // Если код не предоставлен, генерируем его
-    if (!lobbyCode) {
-      lobbyCode = generateLobbyCode();
-      
-      // Проверяем, что код уникален
-      let isUnique = false;
-      let attempts = 0;
-      
-      while (!isUnique && attempts < 5) {
-        const existingLobby = await Lobby.findOne({ lobbyCode });
-        if (!existingLobby) {
-          isUnique = true;
-        } else {
-          lobbyCode = generateLobbyCode();
-          attempts++;
-        }
-      }
-      
-      if (!isUnique) {
-        return res.status(500).json({ message: 'Не удалось создать уникальный код лобби' });
-      }
-    } else {
-      // Проверяем, не занят ли уже предоставленный код
-      const existingLobby = await Lobby.findOne({ lobbyCode });
-      if (existingLobby) {
-        return res.status(400).json({ message: 'Лобби с таким кодом уже существует' });
-      }
+    // Проверяем, есть ли уже лобби у этого создателя
+    const existingLobby = await Lobby.findOne({ 
+      'creator.id': creator.id,
+      status: { $in: ['waiting', 'selecting-factions', 'banning'] }
+    });
+    
+    if (existingLobby) {
+      return res.status(200).json(existingLobby); // Возвращаем существующее лобби
     }
     
-    // Создаем новое лобби
+    // Генерируем уникальный код
+    let lobbyCode;
+    let isUnique = false;
+    let attempts = 0;
+    
+    while (!isUnique && attempts < 10) {
+      lobbyCode = generateLobbyCode();
+      const existing = await Lobby.findOne({ lobbyCode });
+      if (!existing) {
+        isUnique = true;
+      }
+      attempts++;
+    }
+    
+    if (!isUnique) {
+      return res.status(500).json({ message: 'Не удалось создать уникальный код лобби' });
+    }
+    
+    // Создаем лобби
     const newLobby = new Lobby({
       lobbyCode,
-      creator,
+      creator: {
+        id: creator.id,
+        name: creator.name || 'Игрок 1'
+      },
       tournamentFormat: tournamentFormat || 'bo3',
       status: 'waiting',
-      opponent: null,
-      spectators: [],
-      creatorSelectedFactions: [],
-      opponentSelectedFactions: [],
-      creatorBannedFaction: null,
-      opponentBannedFaction: null,
-      creatorRemainingFactions: [],
-      opponentRemainingFactions: [],
       lastActivity: new Date()
     });
     
     await newLobby.save();
-    console.log(`Лобби ${lobbyCode} успешно создано`);
     
-    // Возвращаем только необходимые данные
-    const lobbyResponse = {
-      lobbyCode: newLobby.lobbyCode,
-      creator: newLobby.creator,
-      tournamentFormat: newLobby.tournamentFormat,
-      status: newLobby.status
-    };
+    console.log(`✅ Лобби ${lobbyCode} создано игроком ${creator.id}`);
     
-    res.status(201).json(lobbyResponse);
+    res.status(201).json(newLobby);
   } catch (error) {
-    console.error('Ошибка создания лобби:', error);
+    console.error('❌ Ошибка создания лобби:', error);
+    
+    if (error.code === 11000) {
+      return res.status(409).json({ message: 'Лобби с таким кодом уже существует' });
+    }
+    
     res.status(500).json({ message: 'Ошибка сервера при создании лобби' });
   }
 };
@@ -95,19 +108,25 @@ exports.getLobby = async (req, res) => {
   try {
     const { lobbyCode } = req.params;
     
-    // Выбираем только нужные поля и исключаем избыточные
-    const lobby = await Lobby.findOne({ lobbyCode }).select('-__v');
+    if (!lobbyCode || lobbyCode.length > 10) {
+      return res.status(400).json({ message: 'Некорректный код лобби' });
+    }
+    
+    const lobby = await Lobby.findOne({ 
+      lobbyCode: lobbyCode.toUpperCase() 
+    });
+    
     if (!lobby) {
       return res.status(404).json({ message: 'Лобби не найдено' });
     }
     
-    // Обновляем время последней активности
+    // Обновляем время активности
     lobby.lastActivity = new Date();
     await lobby.save();
     
     res.status(200).json(lobby);
   } catch (error) {
-    console.error('Ошибка получения лобби:', error);
+    console.error('❌ Ошибка получения лобби:', error);
     res.status(500).json({ message: 'Ошибка сервера при получении лобби' });
   }
 };
@@ -116,73 +135,61 @@ exports.getLobby = async (req, res) => {
 exports.joinLobby = async (req, res) => {
   try {
     const { lobbyCode } = req.params;
-    const { playerId, playerName, isSpectator } = req.body;
+    const { playerId, playerName } = req.body;
     
-    console.log(`Попытка присоединения к лобби ${lobbyCode}:`, { playerId, playerName, isSpectator });
+    // Валидация
+    if (!playerId) {
+      return res.status(400).json({ message: 'ID игрока обязателен' });
+    }
     
-    const lobby = await Lobby.findOne({ lobbyCode });
+    const lobby = await Lobby.findOne({ 
+      lobbyCode: lobbyCode.toUpperCase() 
+    });
+    
     if (!lobby) {
-      console.log(`Лобби ${lobbyCode} не найдено`);
       return res.status(404).json({ message: 'Лобби не найдено' });
     }
     
-    console.log(`Текущее состояние лобби ${lobbyCode}:`, {
-      status: lobby.status,
-      creator: lobby.creator,
-      opponent: lobby.opponent || 'null',
-      spectators: lobby.spectators
-    });
-    
     // Проверяем, является ли игрок создателем
     if (lobby.creator && lobby.creator.id === playerId) {
-      console.log(`Игрок ${playerId} является создателем лобби`);
-      
-      // Обновляем время активности
       lobby.lastActivity = new Date();
       await lobby.save();
-      
       return res.status(200).json(lobby);
     }
     
     // Проверяем, является ли игрок уже оппонентом
     if (lobby.opponent && lobby.opponent.id === playerId) {
-      console.log(`Игрок ${playerId} уже является оппонентом в лобби`);
-      
-      // Обновляем время активности
       lobby.lastActivity = new Date();
       await lobby.save();
-      
       return res.status(200).json(lobby);
     }
     
-    // Если игра уже началась, нельзя присоединиться как игрок
+    // Если игра уже началась, нельзя присоединиться
     if (lobby.status !== 'waiting') {
-      console.log(`Лобби в статусе ${lobby.status}, нельзя присоединиться как игрок`);
-      return res.status(400).json({ message: 'Нельзя присоединиться к лобби, игра уже началась' });
+      return res.status(400).json({ 
+        message: 'Нельзя присоединиться к лобби - игра уже началась' 
+      });
     }
     
     // Проверяем, не занята ли позиция оппонента
     if (lobby.opponent && lobby.opponent.id) {
-      console.log(`Позиция оппонента уже занята игроком ${lobby.opponent.id}`);
       return res.status(400).json({ message: 'Лобби уже заполнено' });
     }
     
     // Добавляем игрока как оппонента
-    console.log(`Добавление игрока ${playerId} как оппонента`);
-    lobby.opponent = { id: playerId, name: playerName };
+    lobby.opponent = { 
+      id: playerId, 
+      name: playerName || 'Игрок 2' 
+    };
     lobby.lastActivity = new Date();
     
     await lobby.save();
-    console.log(`Лобби ${lobbyCode} обновлено успешно`);
-    console.log(`Новое состояние лобби:`, {
-      status: lobby.status,
-      creator: lobby.creator,
-      opponent: lobby.opponent
-    });
+    
+    console.log(`✅ Игрок ${playerId} присоединился к лобби ${lobbyCode}`);
     
     res.status(200).json(lobby);
   } catch (error) {
-    console.error('Ошибка присоединения к лобби:', error);
+    console.error('❌ Ошибка присоединения к лобби:', error);
     res.status(500).json({ message: 'Ошибка сервера при присоединении к лобби' });
   }
 };
@@ -191,11 +198,24 @@ exports.joinLobby = async (req, res) => {
 exports.updateLobbyStatus = async (req, res) => {
   try {
     const { lobbyCode } = req.params;
-    const { status } = req.body;
+    const { status, playerId } = req.body;
     
-    const lobby = await Lobby.findOne({ lobbyCode });
+    const validStatuses = ['waiting', 'selecting-factions', 'banning', 'match-results'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ message: 'Некорректный статус' });
+    }
+    
+    const lobby = await Lobby.findOne({ 
+      lobbyCode: lobbyCode.toUpperCase() 
+    });
+    
     if (!lobby) {
       return res.status(404).json({ message: 'Лобби не найдено' });
+    }
+    
+    // Проверяем права (только создатель может менять статус)
+    if (playerId && lobby.creator.id !== playerId) {
+      return res.status(403).json({ message: 'Только создатель может изменить статус' });
     }
     
     lobby.status = status;
@@ -205,7 +225,37 @@ exports.updateLobbyStatus = async (req, res) => {
     
     res.status(200).json(lobby);
   } catch (error) {
-    console.error('Ошибка обновления статуса лобби:', error);
+    console.error('❌ Ошибка обновления статуса лобби:', error);
     res.status(500).json({ message: 'Ошибка сервера при обновлении статуса лобби' });
+  }
+};
+
+// Удаление лобби
+exports.deleteLobby = async (req, res) => {
+  try {
+    const { lobbyCode } = req.params;
+    const { playerId } = req.body;
+    
+    const lobby = await Lobby.findOne({ 
+      lobbyCode: lobbyCode.toUpperCase() 
+    });
+    
+    if (!lobby) {
+      return res.status(404).json({ message: 'Лобби не найдено' });
+    }
+    
+    // Проверяем права (только создатель может удалить лобби)
+    if (playerId && lobby.creator.id !== playerId) {
+      return res.status(403).json({ message: 'Только создатель может удалить лобби' });
+    }
+    
+    await Lobby.deleteOne({ lobbyCode: lobbyCode.toUpperCase() });
+    
+    console.log(`🗑️ Лобби ${lobbyCode} удалено`);
+    
+    res.status(200).json({ message: 'Лобби удалено' });
+  } catch (error) {
+    console.error('❌ Ошибка удаления лобби:', error);
+    res.status(500).json({ message: 'Ошибка сервера при удалении лобби' });
   }
 };
